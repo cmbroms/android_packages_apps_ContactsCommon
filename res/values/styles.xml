@@ -42,11 +42,11 @@ background and text color. See also android:style/Widget.Holo.TextView.ListSepar
         <item name="android:textAllCaps">true</item>
     </style>
 
-    <style name="ListViewStyle" parent="@android:style/Widget.Holo.Light.ListView">
+    <style name="ListViewStyle" parent="@android:style/Widget.Holo.ListView">
         <item name="android:overScrollMode">always</item>
     </style>
 
-    <style name="ContactListFilterTheme" parent="@android:Theme.Holo.Light.Dialog">
+    <style name="ContactListFilterTheme" parent="@android:Theme.Holo.Dialog">
         <item name="android:windowCloseOnTouchOutside">true</item>
         <item name="android:listViewStyle">@style/ListViewStyle</item>
     </style>
@@ -56,7 +56,7 @@ background and text color. See also android:style/Widget.Holo.TextView.ListSepar
         <item name="android:layout_height">match_parent</item>
     </style>
 
-    <style name="BackgroundOnlyTheme" parent="@android:style/Theme.Holo.Light">
+    <style name="BackgroundOnlyTheme" parent="@android:style/Theme.Holo">
         <item name="android:windowBackground">@null</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowAnimationStyle">@null</item>
