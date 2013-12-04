@@ -16,11 +16,14 @@
 
 <resources>
 
-    <!-- Divider color for header separator -->
-    <color name="primary_text_color">#363636</color>
+    <!-- Colors in the contact browser list -->
+    <color name="contact_count_text_color">#BFBFBF</color>
 
     <!-- Divider color for header separator -->
-    <color name="secondary_text_color">#777777</color>
+    <color name="primary_text_color">#FFFFFF</color>
+
+    <!-- Divider color for header separator -->
+    <color name="secondary_text_color">#888888</color>
 
     <!-- Divider color for header separator -->
     <color name="main_header_separator_color">#AAAAAA</color>
@@ -29,13 +32,13 @@
     <color name="secondary_header_separator_color">#D0D0D0</color>
 
     <!-- Color of the theme of the People app -->
-    <color name="people_app_theme_color">#363636</color>
+    <color name="people_app_theme_color">#222222</color>
 
     <!-- Color of image view placeholder. -->
     <color name="image_placeholder">#DDDDDD</color>
 
     <!-- Secondary text color in the Phone app -->
-    <color name="dialtacts_secondary_text_color">#888888</color>
+    <color name="dialtacts_secondary_text_color">#CFCFCF</color>
 
     <!--  Color of the semi-transparent shadow box on contact tiles -->
     <color name="contact_tile_shadow_box_color">#7F000000</color>
