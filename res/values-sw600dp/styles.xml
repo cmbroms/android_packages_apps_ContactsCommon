@@ -15,7 +15,7 @@
   -->
 
 <resources>
-    <style name="ContactListFilterTheme" parent="@android:Theme.Holo.Light.Dialog">
+    <style name="ContactListFilterTheme" parent="@android:Theme.Holo.Dialog">
         <item name="android:windowCloseOnTouchOutside">true</item>
         <item name="android:listViewStyle">@style/ListViewStyle</item>
     </style>
