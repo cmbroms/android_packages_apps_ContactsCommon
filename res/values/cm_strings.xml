@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-     Copyright (C) 2013 The CyanogenMod Project
+     Copyright (C) 2014 The CyanogenMod Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<resources>
-    <!-- Do not translate. Action string for selecting SIM for importing contacts -->
-    <string name="import_from_sim">Import from SIM card</string>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Virtual local storage account name -->
+    <string name="local_storage_account" product="tablet">Local tablet account</string>
+    <string name="local_storage_account" product="default">Local phone account</string>
 </resources>

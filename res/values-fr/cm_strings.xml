@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-     Copyright (C) 2013 The CyanogenMod Project
+     Copyright (C) 2014 The CyanogenMod Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -15,10 +15,6 @@
      limitations under the License.
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="manage_sim_contacts">Gestion des contacts de la carte SIM</string>
-    <string name="export_to_sim">Exporter depuis la carte SIM</string>
-    <string name="Import_All">Importer les contacts de toutes les cartes SIM</string>
-    <string name="ok">OK</string>
-    <string name="cancel">Annuler</string>
-    <string name="select_sim">Sélectionner la carte SIM</string>
+    <string name="local_storage_account" product="tablet">Compte local de la tablette</string>
+    <string name="local_storage_account" product="default">Compte local du téléphone</string>
 </resources>
