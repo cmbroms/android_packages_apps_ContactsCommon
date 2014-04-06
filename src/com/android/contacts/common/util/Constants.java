@@ -24,6 +24,4 @@ public class Constants {
      */
     public static final String PERFORMANCE_TAG = "ContactsPerf";
 
-    // Used for lookup URI that contains an encoded JSON string.
-    public static final String LOOKUP_URI_ENCODED = "encoded";
 }

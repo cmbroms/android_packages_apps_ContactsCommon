@@ -84,8 +84,9 @@ public class ContactListPinnedHeaderView extends ViewGroup {
         mHeaderTextView = new TextView(mContext);
         mHeaderTextView.setTextColor(mHeaderTextColor);
         mHeaderTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX, mHeaderTextSize);
+        mHeaderTextView.setTypeface(mHeaderTextView.getTypeface(), Typeface.BOLD);
         mHeaderTextView.setGravity(Gravity.CENTER_VERTICAL);
-        mHeaderTextView.setTextAppearance(mContext, R.style.DirectoryHeaderStyle);
+        mHeaderTextView.setAllCaps(true);
         mHeaderTextView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
         addView(mHeaderTextView);
         mHeaderDivider = new View(mContext);

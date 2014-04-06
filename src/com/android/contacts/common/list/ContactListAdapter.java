@@ -100,20 +100,11 @@ public abstract class ContactListAdapter extends ContactEntryListAdapter {
     private long mSelectedContactDirectoryId;
     private String mSelectedContactLookupKey;
     private long mSelectedContactId;
-    private ContactListItemView.PhotoPosition mPhotoPosition;
 
     public ContactListAdapter(Context context) {
         super(context);
 
         mUnknownNameText = context.getText(R.string.missing_name);
-    }
-
-    public void setPhotoPosition(ContactListItemView.PhotoPosition photoPosition) {
-        mPhotoPosition = photoPosition;
-    }
-
-    public ContactListItemView.PhotoPosition getPhotoPosition() {
-        return mPhotoPosition;
     }
 
     public CharSequence getUnknownNameText() {
@@ -198,9 +189,6 @@ public abstract class ContactListAdapter extends ContactEntryListAdapter {
         view.setUnknownNameText(mUnknownNameText);
         view.setQuickContactEnabled(isQuickContactEnabled());
         view.setActivatedStateSupported(isSelectionVisible());
-        if (mPhotoPosition != null) {
-            view.setPhotoPosition(mPhotoPosition);
-        }
         return view;
     }
 

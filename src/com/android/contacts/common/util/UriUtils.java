@@ -48,8 +48,4 @@ public class UriUtils {
     public static String uriToString(Uri uri) {
         return uri == null ? null : uri.toString();
     }
-
-    public static boolean isEncodedContactUri(Uri uri) {
-        return uri != null && uri.getLastPathSegment().equals(Constants.LOOKUP_URI_ENCODED);
-    }
 }

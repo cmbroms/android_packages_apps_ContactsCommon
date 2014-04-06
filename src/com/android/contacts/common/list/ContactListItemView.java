@@ -34,10 +34,8 @@ import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.TextUtils.TruncateAt;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView.SelectionBoundsAdjuster;
@@ -49,7 +47,7 @@ import android.widget.TextView;
 import com.android.contacts.common.ContactPresenceIconUtil;
 import com.android.contacts.common.ContactStatusUtil;
 import com.android.contacts.common.R;
-import com.android.contacts.common.format.TextHighlighter;
+import com.android.contacts.common.format.PrefixHighlighter;
 import com.android.contacts.common.util.SearchUtil;
 import com.google.common.collect.Lists;
 
@@ -112,22 +110,6 @@ public class ContactListItemView extends ViewGroup
     private Drawable mHorizontalDividerDrawable;
     private int mHorizontalDividerHeight;
 
-    protected static class HighlightSequence {
-        private final int start;
-        private final int end;
-
-        HighlightSequence(int start, int end) {
-            this.start = start;
-            this.end = end;
-        }
-    }
-
-    private ArrayList<HighlightSequence> mNameHighlightSequence;
-    private ArrayList<HighlightSequence> mNumberHighlightSequence;
-
-    // Highlighting prefix for names.
-    private String mHighlightedPrefix;
-
     /**
      * Where to put contact photo. This affects the other Views' layout or look-and-feel.
      *
@@ -173,7 +155,7 @@ public class ContactListItemView extends ViewGroup
 
     private ColorStateList mSecondaryTextColor;
 
-
+    private String mHighlightedPrefix;
 
     private int mDefaultPhotoViewSize = 0;
     /**
@@ -228,14 +210,14 @@ public class ContactListItemView extends ViewGroup
     private Rect mBoundsWithoutHeader = new Rect();
 
     /** A helper used to highlight a prefix in a text field. */
-    private final TextHighlighter mTextHighlighter;
+    private PrefixHighlighter mPrefixHighlighter;
     private CharSequence mUnknownNameText;
 
     public ContactListItemView(Context context) {
         super(context);
         mContext = context;
 
-        mTextHighlighter = new TextHighlighter(Typeface.BOLD);
+        mPrefixHighlighter = new PrefixHighlighter(Color.GREEN);
     }
 
     public ContactListItemView(Context context, AttributeSet attrs) {
@@ -302,8 +284,9 @@ public class ContactListItemView extends ViewGroup
                 a.getDimensionPixelOffset(
                         R.styleable.ContactListItemView_list_item_padding_bottom, 0));
 
-        mTextHighlighter = new TextHighlighter(Typeface.BOLD);
-
+        final int prefixHighlightColor = a.getColor(
+                R.styleable.ContactListItemView_list_item_prefix_highlight_color, Color.GREEN);
+        mPrefixHighlighter = new PrefixHighlighter(prefixHighlightColor);
         a.recycle();
 
         a = getContext().obtainStyledAttributes(android.R.styleable.Theme);
@@ -315,9 +298,6 @@ public class ContactListItemView extends ViewGroup
         if (mActivatedBackgroundDrawable != null) {
             mActivatedBackgroundDrawable.setCallback(this);
         }
-
-        mNameHighlightSequence = new ArrayList<HighlightSequence>();
-        mNumberHighlightSequence = new ArrayList<HighlightSequence>();
     }
 
     public void setUnknownNameText(CharSequence unknownNameText) {
@@ -780,7 +760,7 @@ public class ContactListItemView extends ViewGroup
                 mHeaderTextView = new TextView(mContext);
                 mHeaderTextView.setTextColor(mHeaderTextColor);
                 mHeaderTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX, mHeaderTextSize);
-                mHeaderTextView.setTextAppearance(mContext, R.style.SectionHeaderStyle);
+                mHeaderTextView.setTypeface(mHeaderTextView.getTypeface(), Typeface.BOLD);
                 mHeaderTextView.setGravity(Gravity.CENTER_VERTICAL);
                 mHeaderTextView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
                 addView(mHeaderTextView);
@@ -873,39 +853,12 @@ public class ContactListItemView extends ViewGroup
 
     /**
      * Sets a word prefix that will be highlighted if encountered in fields like
-     * name and search snippet. This will disable the mask highlighting for names.
+     * name and search snippet.
      * <p>
      * NOTE: must be all upper-case
      */
     public void setHighlightedPrefix(String upperCasePrefix) {
         mHighlightedPrefix = upperCasePrefix;
-    }
-
-    /**
-     * Clears previously set highlight sequences for the view.
-     */
-    public void clearHighlightSequences() {
-        mNameHighlightSequence.clear();
-        mNumberHighlightSequence.clear();
-        mHighlightedPrefix = null;
-    }
-
-    /**
-     * Adds a highlight sequence to the name highlighter.
-     * @param start The start position of the highlight sequence.
-     * @param end The end position of the highlight sequence.
-     */
-    public void addNameHighlightSequence(int start, int end) {
-        mNameHighlightSequence.add(new HighlightSequence(start, end));
-    }
-
-    /**
-     * Adds a highlight sequence to the number highlighter.
-     * @param start The start position of the highlight sequence.
-     * @param end The end position of the highlight sequence.
-     */
-    public void addNumberHighlightSequence(int start, int end) {
-        mNumberHighlightSequence.add(new HighlightSequence(start, end));
     }
 
     /**
@@ -916,7 +869,7 @@ public class ContactListItemView extends ViewGroup
             mNameTextView = new TextView(mContext);
             mNameTextView.setSingleLine(true);
             mNameTextView.setEllipsize(getTextEllipsis());
-            mNameTextView.setTextAppearance(mContext, R.style.TextAppearanceMedium);
+            mNameTextView.setTextAppearance(mContext, android.R.style.TextAppearance_Medium);
             // Manually call setActivated() since this view may be added after the first
             // setActivated() call toward this whole item view.
             mNameTextView.setActivated(isActivated());
@@ -983,9 +936,9 @@ public class ContactListItemView extends ViewGroup
             mLabelView = new TextView(mContext);
             mLabelView.setSingleLine(true);
             mLabelView.setEllipsize(getTextEllipsis());
-            mLabelView.setTextAppearance(mContext, R.style.TextAppearanceSmall);
+            mLabelView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
             if (mPhotoPosition == PhotoPosition.LEFT) {
-                //mLabelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, mCountViewTextSize);
+                mLabelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, mCountViewTextSize);
                 mLabelView.setAllCaps(true);
                 mLabelView.setGravity(Gravity.END);
             } else {
@@ -1001,7 +954,7 @@ public class ContactListItemView extends ViewGroup
     /**
      * Adds or updates a text view for the data element.
      */
-    public void setData(char[] text, int size) {
+    public void setData(char[] text, int size, int dataColumnIndex) {
         if (text == null || size == 0) {
             if (mDataView != null) {
                 mDataView.setVisibility(View.GONE);
@@ -1010,36 +963,14 @@ public class ContactListItemView extends ViewGroup
             getDataView();
             setMarqueeText(mDataView, text, size);
             mDataView.setVisibility(VISIBLE);
-        }
-    }
-
-    /**
-     * Sets phone number for a list item. This takes care of number highlighting if the highlight
-     * mask exists.
-     */
-    public void setPhoneNumber(String text) {
-        if (text == null) {
-            if (mDataView != null) {
-                mDataView.setVisibility(View.GONE);
+            // Check if this is a phone number. This code works also for the legacy phone number
+            // coming from LegacyPhoneNumberListAdapter.PHONE_NUMBER_COLUMN_INDEX because they are
+            // the exact same constant value (3)
+            if (dataColumnIndex == PhoneNumberListAdapter.PhoneQuery.PHONE_NUMBER) {
+                // We have a phone number as "mDataView" so make it always LTR and VIEW_START
+                mDataView.setTextDirection(View.TEXT_DIRECTION_LTR);
+                mDataView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
             }
-        } else {
-            getDataView();
-            // Sets phone number texts for display after highlighting it, if applicable.
-            //CharSequence textToSet = text;
-            final SpannableString textToSet = new SpannableString(text);
-
-            if (mNumberHighlightSequence.size() != 0) {
-                final HighlightSequence highlightSequence = mNumberHighlightSequence.get(0);
-                mTextHighlighter.applyMaskingHighlight(textToSet, highlightSequence.start,
-                        highlightSequence.end);
-            }
-
-            setMarqueeText(mDataView, textToSet);
-            mDataView.setVisibility(VISIBLE);
-
-            // We have a phone number as "mDataView" so make it always LTR and VIEW_START
-            mDataView.setTextDirection(View.TEXT_DIRECTION_LTR);
-            mDataView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
         }
     }
 
@@ -1072,7 +1003,7 @@ public class ContactListItemView extends ViewGroup
             mDataView = new TextView(mContext);
             mDataView.setSingleLine(true);
             mDataView.setEllipsize(getTextEllipsis());
-            mDataView.setTextAppearance(mContext, R.style.TextAppearanceSmall);
+            mDataView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
             mDataView.setActivated(isActivated());
             mDataView.setId(R.id.cliv_data_view);
             addView(mDataView);
@@ -1089,7 +1020,7 @@ public class ContactListItemView extends ViewGroup
                 mSnippetView.setVisibility(View.GONE);
             }
         } else {
-            mTextHighlighter.setPrefixText(getSnippetView(), text, mHighlightedPrefix);
+            mPrefixHighlighter.setText(getSnippetView(), text, mHighlightedPrefix);
             mSnippetView.setVisibility(VISIBLE);
         }
     }
@@ -1103,6 +1034,7 @@ public class ContactListItemView extends ViewGroup
             mSnippetView.setSingleLine(true);
             mSnippetView.setEllipsize(getTextEllipsis());
             mSnippetView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
+            mSnippetView.setTypeface(mSnippetView.getTypeface(), Typeface.BOLD);
             mSnippetView.setActivated(isActivated());
             addView(mSnippetView);
         }
@@ -1135,7 +1067,7 @@ public class ContactListItemView extends ViewGroup
             mCountView.setSingleLine(true);
             mCountView.setEllipsize(getTextEllipsis());
             mCountView.setTextAppearance(mContext, android.R.style.TextAppearance_Medium);
-            mCountView.setTextColor(R.color.people_app_theme_color);
+            mCountView.setTextColor(R.color.contact_count_text_color);
             addView(mCountView);
         }
         return mCountView;
@@ -1199,7 +1131,12 @@ public class ContactListItemView extends ViewGroup
 
     public void showDisplayName(Cursor cursor, int nameColumnIndex, int displayOrder) {
         CharSequence name = cursor.getString(nameColumnIndex);
-        setDisplayName(name);
+        if (!TextUtils.isEmpty(name)) {
+            name = mPrefixHighlighter.apply(name, mHighlightedPrefix);
+        } else {
+            name = mUnknownNameText;
+        }
+        setMarqueeText(getNameTextView(), name);
 
         // Since the quick contact content description is derived from the display name and there is
         // no guarantee that when the quick contact is initialized the display name is already set,
@@ -1208,33 +1145,6 @@ public class ContactListItemView extends ViewGroup
             mQuickContact.setContentDescription(mContext.getString(
                     R.string.description_quick_contact_for, mNameTextView.getText()));
         }
-    }
-
-    public void setDisplayName(CharSequence name, boolean highlight) {
-        if (!TextUtils.isEmpty(name) && highlight) {
-            clearHighlightSequences();
-            addNameHighlightSequence(0, name.length());
-        }
-        setDisplayName(name);
-    }
-
-    public void setDisplayName(CharSequence name) {
-        if (!TextUtils.isEmpty(name)) {
-            // Chooses the available highlighting method for highlighting.
-            if (mHighlightedPrefix != null) {
-                name = mTextHighlighter.applyPrefixHighlight(name, mHighlightedPrefix);
-            } else if (mNameHighlightSequence.size() != 0) {
-                final SpannableString spannableName = new SpannableString(name);
-                for (HighlightSequence highlightSequence : mNameHighlightSequence) {
-                    mTextHighlighter.applyMaskingHighlight(spannableName, highlightSequence.start,
-                            highlightSequence.end);
-                }
-                name = spannableName;
-            }
-        } else {
-            name = mUnknownNameText;
-        }
-        setMarqueeText(getNameTextView(), name);
     }
 
     public void hideDisplayName() {
@@ -1475,16 +1385,11 @@ public class ContactListItemView extends ViewGroup
     }
 
     /**
-     * Shows data element.
+     * Shows data element (e.g. phone number).
      */
     public void showData(Cursor cursor, int dataColumnIndex) {
         cursor.copyStringToBuffer(dataColumnIndex, mDataBuffer);
-        setData(mDataBuffer.data, mDataBuffer.sizeCopied);
-    }
-
-    public void showPhoneNumber(Cursor cursor, int dataColumnIndex) {
-        // Highlights the number and aligns text before showing.
-        setPhoneNumber(cursor.getString(dataColumnIndex));
+        setData(mDataBuffer.data, mDataBuffer.sizeCopied, dataColumnIndex);
     }
 
     public void setActivatedStateSupported(boolean flag) {
@@ -1514,33 +1419,5 @@ public class ContactListItemView extends ViewGroup
     public void setSelectionBoundsHorizontalMargin(int left, int right) {
         mSelectionBoundsMarginLeft = left;
         mSelectionBoundsMarginRight = right;
-    }
-
-    /**
-     * Set drawable resources directly for both the background and the drawable resource
-     * of the photo view
-     *
-     * @param backgroundId Id of background resource
-     * @param drawableId Id of drawable resource
-     */
-    public void setDrawableResource(int backgroundId, int drawableId) {
-        final ImageView photo = getPhotoView();
-        photo.setScaleType(ImageView.ScaleType.CENTER);
-        photo.setBackgroundResource(backgroundId);
-        photo.setImageResource(drawableId);
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        final float x = event.getX();
-        final float y = event.getY();
-        // If the touch event's coordinates are not within the view's header, then delegate
-        // to super.onTouchEvent so that regular view behavior is preserved. Otherwise, consume
-        // and ignore the touch event.
-        if (mBoundsWithoutHeader.contains((int) x, (int) y) || !pointInView(x, y, 0)) {
-            return super.onTouchEvent(event);
-        } else {
-            return true;
-        }
     }
 }
