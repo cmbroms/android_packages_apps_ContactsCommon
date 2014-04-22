@@ -29,7 +29,7 @@
     <color name="main_header_separator_color">#33b5e5</color>
 
     <!-- Divider color for header separator -->
-    <color name="secondary_header_separator_color">#8a8a8a</color>
+    <color name="secondary_header_separator_color">#454545</color>
 
     <!-- Color of the theme of the People app -->
     <color name="people_app_theme_color">#222222</color>
