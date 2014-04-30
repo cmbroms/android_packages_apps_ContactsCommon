@@ -32,7 +32,7 @@
     <color name="secondary_header_separator_color">#454545</color>
 
     <!-- Color of the theme of the People app -->
-    <color name="people_app_theme_color">#33b5e5</color>
+    <color name="people_app_theme_color">#222222</color>
 
     <!-- Color of image view placeholder. -->
     <color name="image_placeholder">#020202</color>
