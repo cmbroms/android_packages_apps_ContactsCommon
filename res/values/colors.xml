@@ -16,11 +16,14 @@
 
 <resources>
 
-    <!-- Divider color for header separator -->
-    <color name="primary_text_color">#efefef</color>
+    <!-- Colors in the contact browser list -->
+    <color name="contact_count_text_color">#BFBFBF</color>
 
     <!-- Divider color for header separator -->
-    <color name="secondary_text_color">#bfbfbf</color>
+    <color name="primary_text_color">#FFFFFF</color>
+
+    <!-- Divider color for header separator -->
+    <color name="secondary_text_color">#888888</color>
 
     <!-- Divider color for header separator -->
     <color name="main_header_separator_color">#33b5e5</color>
