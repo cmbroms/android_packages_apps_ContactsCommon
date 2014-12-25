@@ -23,8 +23,9 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.provider.BaseColumns;
 import android.provider.ContactsContract;
+import android.provider.ContactsContract.Data;
 
-import com.android.contacts.common.test.NeededForTesting;
+import com.android.contacts.common.testing.NeededForTesting;
 import com.google.common.collect.Sets;
 
 import java.util.HashSet;
@@ -37,8 +38,8 @@ import java.util.Set;
  * or delete operations based on a "before" {@link Entity} snapshot.
  */
 public class ValuesDelta implements Parcelable {
-    public ContentValues mBefore;
-    public ContentValues mAfter;
+    protected ContentValues mBefore;
+    protected ContentValues mAfter;
     protected String mIdColumn = BaseColumns._ID;
     private boolean mFromTemplate;
 
@@ -49,8 +50,6 @@ public class ValuesDelta implements Parcelable {
      * been persisted.
      */
     protected static int sNextInsertId = -1;
-
-    private static final String CONTENT_DETAIL_INFO = "data1";
 
     protected ValuesDelta() {
     }
@@ -67,10 +66,10 @@ public class ValuesDelta implements Parcelable {
         // init data1 to mAfter map. when no operation edittext of
         // sim phone in the UI, the mAfter init have no data1 value,
         // it will cause the builddiff data not right.
-        if (before.containsKey(CONTENT_DETAIL_INFO)) {
-            String contactInfo = before.getAsString(CONTENT_DETAIL_INFO);
+        if (before.containsKey(Data.DATA1)) {
+            String contactInfo = before.getAsString(Data.DATA1);
             if (null != contactInfo && !"".equals(contactInfo)) {
-                entry.mAfter.put(CONTENT_DETAIL_INFO, contactInfo);
+                entry.mAfter.put(Data.DATA1, contactInfo);
             }
         }
 
@@ -94,6 +93,10 @@ public class ValuesDelta implements Parcelable {
     @NeededForTesting
     public ContentValues getAfter() {
         return mAfter;
+    }
+
+    public ContentValues getBefore() {
+        return mBefore;
     }
 
     public boolean containsKey(String key) {

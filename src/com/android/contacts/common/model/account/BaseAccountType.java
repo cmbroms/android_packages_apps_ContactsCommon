@@ -24,7 +24,6 @@ import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Event;
 import android.provider.ContactsContract.CommonDataKinds.GroupMembership;
 import android.provider.ContactsContract.CommonDataKinds.Im;
-import android.provider.ContactsContract.CommonDataKinds.LocalGroup;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
 import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract.CommonDataKinds.Organization;
@@ -41,7 +40,7 @@ import android.view.inputmethod.EditorInfo;
 
 import com.android.contacts.common.R;
 import com.android.contacts.common.model.dataitem.DataKind;
-import com.android.contacts.common.test.NeededForTesting;
+import com.android.contacts.common.testing.NeededForTesting;
 import com.android.contacts.common.util.CommonDateUtils;
 import com.android.contacts.common.util.ContactDisplayUtils;
 import com.google.common.collect.Lists;
@@ -80,15 +79,12 @@ public abstract class BaseAccountType extends AccountType {
                                                              // basic format as email addresses
     protected static final int FLAGS_RELATION = EditorInfo.TYPE_CLASS_TEXT
             | EditorInfo.TYPE_TEXT_FLAG_CAP_WORDS | EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME;
-    protected static final int FLAGS_LOCAL_GROUPS = EditorInfo.TYPE_CLASS_TEXT
-            | EditorInfo.TYPE_TEXT_FLAG_CAP_WORDS;
 
     // Specify the maximum number of lines that can be used to display various field types.  If no
     // value is specified for a particular type, we use the default value from {@link DataKind}.
     protected static final int MAX_LINES_FOR_POSTAL_ADDRESS = 10;
     protected static final int MAX_LINES_FOR_GROUP = 10;
     protected static final int MAX_LINES_FOR_NOTE = 100;
-    protected static final int LOCAL_GROUP_HEIGHT = 110;
 
     private interface Tag {
         static final String DATA_KIND = "DataKind";
@@ -123,7 +119,7 @@ public abstract class BaseAccountType extends AccountType {
         this.accountType = null;
         this.dataSet = null;
         this.titleRes = R.string.account_phone;
-        this.iconRes = R.mipmap.ic_launcher_contacts;
+        this.iconRes = R.mipmap.ic_contacts_clr_48cv_44dp;
     }
 
     protected static EditType buildPhoneType(int type) {
@@ -373,8 +369,8 @@ public abstract class BaseAccountType extends AccountType {
     protected DataKind addDataKindOrganization(Context context) throws DefinitionException {
         DataKind kind = addKind(new DataKind(Organization.CONTENT_ITEM_TYPE,
                     R.string.organizationLabelsGroup, 5, true));
-        kind.actionHeader = new SimpleInflater(Organization.COMPANY);
-        kind.actionBody = new SimpleInflater(Organization.TITLE);
+        kind.actionHeader = new SimpleInflater(R.string.organizationLabelsGroup);
+        kind.actionBody = ORGANIZATION_BODY_INFLATER;
         kind.typeOverallMax = 1;
 
         kind.fieldList = Lists.newArrayList();
@@ -440,24 +436,13 @@ public abstract class BaseAccountType extends AccountType {
         DataKind kind = addKind(new DataKind(GroupMembership.CONTENT_ITEM_TYPE,
                 R.string.groupsLabel, 999, true));
 
+        kind.actionHeader = new SimpleInflater(R.string.label_groups);
+        kind.actionBody = new SimpleInflater(GroupMembership.GROUP_ROW_ID);
         kind.typeOverallMax = 1;
         kind.fieldList = Lists.newArrayList();
         kind.fieldList.add(new EditField(GroupMembership.GROUP_ROW_ID, -1, -1));
 
         kind.maxLinesForDisplay = MAX_LINES_FOR_GROUP;
-
-        return kind;
-    }
-
-    protected DataKind addDataKindLocalGroups(Context context) throws DefinitionException {
-        DataKind kind = addKind(new DataKind(LocalGroup.CONTENT_ITEM_TYPE,
-                R.string.label_groups, LOCAL_GROUP_HEIGHT, true));
-        kind.typeOverallMax = 1;
-        kind.actionHeader = new SimpleInflater(R.string.label_groups);
-        kind.actionBody = new SimpleInflater(LocalGroup.GROUP);
-        kind.fieldList = Lists.newArrayList();
-        kind.fieldList.add(new EditField(LocalGroup.GROUP, R.string.label_groups,
-                FLAGS_LOCAL_GROUPS));
 
         return kind;
     }
@@ -647,6 +632,24 @@ public abstract class BaseAccountType extends AccountType {
             }
         }
     }
+
+    public static final StringInflater ORGANIZATION_BODY_INFLATER = new StringInflater() {
+        @Override
+        public CharSequence inflateUsing(Context context, ContentValues values) {
+            final CharSequence companyValue = values.containsKey(Organization.COMPANY) ?
+                    values.getAsString(Organization.COMPANY) : null;
+            final CharSequence titleValue = values.containsKey(Organization.TITLE) ?
+                    values.getAsString(Organization.TITLE) : null;
+
+            if (companyValue != null && titleValue != null) {
+                return companyValue +  ": " + titleValue;
+            } else if (companyValue == null) {
+                return titleValue;
+            } else {
+                return companyValue;
+            }
+        }
+    };
 
     @Override
     public boolean isGroupMembershipEditable() {
@@ -1246,8 +1249,8 @@ public abstract class BaseAccountType extends AccountType {
             final DataKind kind = newDataKind(context, parser, attrs, false,
                     Organization.CONTENT_ITEM_TYPE, null, R.string.organizationLabelsGroup,
                     Weight.ORGANIZATION,
-                    new SimpleInflater(Organization.COMPANY),
-                    new SimpleInflater(Organization.TITLE));
+                    new SimpleInflater(R.string.organizationLabelsGroup),
+                    ORGANIZATION_BODY_INFLATER);
 
             kind.fieldList.add(new EditField(Organization.COMPANY, R.string.ghostData_company,
                     FLAGS_GENERIC_NAME));

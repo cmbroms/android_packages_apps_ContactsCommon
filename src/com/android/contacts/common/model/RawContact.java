@@ -221,13 +221,6 @@ final public class RawContact implements Parcelable {
         return getValues().getAsString(RawContacts.DATA_SET);
     }
 
-    /**
-     * Returns the account type and data set of the raw contact.
-     */
-    public String getAccountTypeAndDataSetString() {
-        return getValues().getAsString(RawContacts.ACCOUNT_TYPE_AND_DATA_SET);
-    }
-
     public boolean isDirty() {
         return getValues().getAsBoolean(RawContacts.DIRTY);
     }
@@ -254,10 +247,6 @@ final public class RawContact implements Parcelable {
 
     public boolean isDeleted() {
         return getValues().getAsBoolean(RawContacts.DELETED);
-    }
-
-    public boolean isNameVerified() {
-        return getValues().getAsBoolean(RawContacts.NAME_VERIFIED);
     }
 
     public long getContactId() {
@@ -345,10 +334,6 @@ final public class RawContact implements Parcelable {
             }
         }
         return list;
-    }
-
-    public List<NamedDataItem> getNamedDataItems() {
-        return mDataItems;
     }
 
     public String toString() {

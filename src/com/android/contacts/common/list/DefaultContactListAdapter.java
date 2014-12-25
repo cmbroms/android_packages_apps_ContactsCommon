@@ -27,8 +27,7 @@ import android.provider.ContactsContract;
 import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.Directory;
 import android.provider.ContactsContract.RawContacts;
-import android.provider.ContactsContract.SearchSnippetColumns;
-import android.provider.Settings;
+import android.provider.ContactsContract.SearchSnippets;
 import android.text.TextUtils;
 import android.view.View;
 
@@ -45,16 +44,8 @@ import java.util.List;
  */
 public class DefaultContactListAdapter extends ContactListAdapter {
 
-    public static final char SNIPPET_START_MATCH = '\u0001';
-    public static final char SNIPPET_END_MATCH = '\u0001';
-    public static final String SNIPPET_ELLIPSIS = "\u2026";
-    public static final int SNIPPET_MAX_TOKENS = 5;
-    public static final int AIRPLANE_MODE_ON_VALUE = 1;
-    public static final int AIRPLANE_MODE_OFF_VALUE = 0;
-    public static final String WITHOUT_SIM_FLAG = "no_sim";
-
-    public static final String SNIPPET_ARGS = SNIPPET_START_MATCH + "," + SNIPPET_END_MATCH + ","
-            + SNIPPET_ELLIPSIS + "," + SNIPPET_MAX_TOKENS;
+    public static final char SNIPPET_START_MATCH = '[';
+    public static final char SNIPPET_END_MATCH = ']';
 
     public DefaultContactListAdapter(Context context) {
         super(context);
@@ -70,7 +61,7 @@ public class DefaultContactListAdapter extends ContactListAdapter {
         Uri uri = loader.getUri();
         if (null != uri) {
             uri = uri.buildUpon().appendQueryParameter(key, value)
-                    .appendQueryParameter(WITHOUT_SIM_FLAG, "true").build();
+                    .appendQueryParameter(SimContactsConstants.WITHOUT_SIM_FLAG, "true").build();
             loader.setUri(uri);
         }
     }
@@ -103,20 +94,17 @@ public class DefaultContactListAdapter extends ContactListAdapter {
                     builder.appendQueryParameter(ContactsContract.LIMIT_PARAM_KEY,
                             String.valueOf(getDirectoryResultLimit(getDirectoryById(directoryId))));
                 }
-                builder.appendQueryParameter(SearchSnippetColumns.SNIPPET_ARGS_PARAM_KEY,
-                        SNIPPET_ARGS);
-                builder.appendQueryParameter(SearchSnippetColumns.DEFERRED_SNIPPETING_KEY,"1");
+                builder.appendQueryParameter(SearchSnippets.DEFERRED_SNIPPETING_KEY,"1");
                 loader.setUri(builder.build());
                 loader.setProjection(getProjection(true));
             }
-
-            // Do not show contacts in SIM card when airplane mode is on
             boolean isAirMode = MoreContactUtils.isAPMOnAndSIMPowerDown(getContext());
 
-            if ((null != filter && filter.filterType ==
-                    ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM) || isAirMode) {
-                appendUriQueryParameterWithoutSim(loader, RawContacts.ACCOUNT_TYPE,
-                        SimAccountType.ACCOUNT_TYPE);
+            if (isAirMode
+                    || (null != filter && filter.filterType ==
+                        ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM)) {
+                appendUriQueryParameterWithoutSim(loader,
+                        RawContacts.ACCOUNT_TYPE, SimAccountType.ACCOUNT_TYPE);
             } else {
                 // Do not show contacts when SIM card is disabled
                 String disabledSimFilter = MoreContactUtils.getDisabledSimFilter();
@@ -125,7 +113,6 @@ public class DefaultContactListAdapter extends ContactListAdapter {
                             loader, RawContacts.ACCOUNT_NAME, disabledSimFilter);
                 }
             }
-
         } else {
             configureUri(loader, directoryId, filter);
             loader.setProjection(getProjection(false));
@@ -133,7 +120,7 @@ public class DefaultContactListAdapter extends ContactListAdapter {
         }
 
         String sortOrder;
-        if (getSortOrder() == ContactsContract.Preferences.SORT_ORDER_PRIMARY) {
+        if (getSortOrder() == ContactsPreferences.SORT_ORDER_PRIMARY) {
             sortOrder = Contacts.SORT_KEY_PRIMARY;
         } else {
             sortOrder = Contacts.SORT_KEY_ALTERNATIVE;
@@ -231,13 +218,14 @@ public class DefaultContactListAdapter extends ContactListAdapter {
                 }
                 break;
             }
-            case ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM: {
-                appendUriQueryParameterWithoutSim(loader, RawContacts.ACCOUNT_TYPE,
-                        SimAccountType.ACCOUNT_TYPE);
+            case ContactListFilter.FILTER_TYPE_ACCOUNT: {
+                // We use query parameters for account filter, so no selection to add here.
                 break;
             }
-            case ContactListFilter.FILTER_TYPE_ACCOUNT: {
-                break;
+            case ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM: {
+            appendUriQueryParameterWithoutSim(loader, RawContacts.ACCOUNT_TYPE,
+                    SimAccountType.ACCOUNT_TYPE);
+            break;
             }
         }
         loader.setSelection(selection.toString());
@@ -246,6 +234,7 @@ public class DefaultContactListAdapter extends ContactListAdapter {
 
     @Override
     protected void bindView(View itemView, int partition, Cursor cursor, int position) {
+        super.bindView(itemView, partition, cursor, position);
         final ContactListItemView view = (ContactListItemView)itemView;
 
         view.setHighlightedPrefix(isSearchMode() ? getUpperCaseQueryString() : null);
@@ -259,18 +248,18 @@ public class DefaultContactListAdapter extends ContactListAdapter {
         if (isQuickContactEnabled()) {
             bindQuickContact(view, partition, cursor, ContactQuery.CONTACT_PHOTO_ID,
                     ContactQuery.CONTACT_PHOTO_URI, ContactQuery.CONTACT_ID,
-                    ContactQuery.CONTACT_LOOKUP_KEY, ContactQuery.CONTACT_DISPLAY_NAME);
+                    ContactQuery.CONTACT_LOOKUP_KEY, ContactQuery.CONTACT_DISPLAY_NAME,
+                    ContactQuery.CONTACT_ACCOUNT_TYPE, ContactQuery.CONTACT_ACCOUNT_NAME);
         } else {
             if (getDisplayPhotos()) {
                 bindPhoto(view, partition, cursor);
             }
         }
 
+        bindNameAndViewId(view, cursor);
         if (isQuickCallButtonEnabled()) {
             bindQuickCallView(view, cursor);
         }
-
-        bindName(view, cursor);
         bindPresenceAndStatusMessage(view, cursor);
 
         if (isSearchMode()) {

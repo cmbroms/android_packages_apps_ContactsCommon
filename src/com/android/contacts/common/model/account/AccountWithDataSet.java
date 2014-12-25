@@ -26,7 +26,6 @@ import android.provider.ContactsContract;
 import android.provider.ContactsContract.RawContacts;
 import android.text.TextUtils;
 
-import com.android.contacts.common.SimContactsConstants;
 import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
 
@@ -38,10 +37,6 @@ import java.util.regex.Pattern;
  * Wrapper for an account that includes a data set (which may be null).
  */
 public class AccountWithDataSet extends Account {
-    public static final AccountWithDataSet LOCAL_PHONE_ACCOUNT =
-            new AccountWithDataSet(SimContactsConstants.PHONE_NAME,
-                    SimContactsConstants.ACCOUNT_TYPE_PHONE, null);
-
     private static final String STRINGIFY_SEPARATOR = "\u0001";
     private static final String ARRAY_STRINGIFY_SEPARATOR = "\u0002";
 
@@ -120,10 +115,7 @@ public class AccountWithDataSet extends Account {
 
     @Override
     public boolean equals(Object o) {
-        if (o == this) return true;
-
         return (o instanceof AccountWithDataSet) && super.equals(o)
-                && Objects.equal(((AccountWithDataSet) o).mAccountTypeWithDataSet, mAccountTypeWithDataSet)
                 && Objects.equal(((AccountWithDataSet) o).dataSet, dataSet);
     }
 

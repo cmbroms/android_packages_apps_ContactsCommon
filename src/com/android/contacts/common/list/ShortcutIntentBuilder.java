@@ -1,9 +1,5 @@
 /*
  * Copyright (C) 2010 The Android Open Source Project
- * Copyright (C) 2013 The Linux Foundation. All rights reserved.
- *
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +15,7 @@
  */
 package com.android.contacts.common.list;
 
+import android.accounts.Account;
 import android.app.ActivityManager;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -40,11 +37,15 @@ import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.Photo;
 import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.Data;
+import android.support.v4.graphics.drawable.RoundedBitmapDrawable;
+import android.support.v4.graphics.drawable.RoundedBitmapDrawableFactory;
+import android.telecom.PhoneAccount;
+import android.provider.ContactsContract.RawContacts;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.TextUtils.TruncateAt;
 
-import com.android.contacts.common.CallUtil;
+import com.android.contacts.common.ContactsUtils;
 import com.android.contacts.common.ContactPhotoManager;
 import com.android.contacts.common.ContactPhotoManager.DefaultImageRequest;
 import com.android.contacts.common.R;
@@ -57,12 +58,16 @@ public class ShortcutIntentBuilder {
     private static final String[] CONTACT_COLUMNS = {
         Contacts.DISPLAY_NAME,
         Contacts.PHOTO_ID,
-        Contacts.LOOKUP_KEY
+        Contacts.LOOKUP_KEY,
+        RawContacts.ACCOUNT_TYPE,
+        RawContacts.ACCOUNT_NAME
     };
 
     private static final int CONTACT_DISPLAY_NAME_COLUMN_INDEX = 0;
     private static final int CONTACT_PHOTO_ID_COLUMN_INDEX = 1;
     private static final int CONTACT_LOOKUP_KEY_COLUMN_INDEX = 2;
+    private static final int CONTACT_ACCOUNT_TYPE_COLUMN_INDEX = 3;
+    private static final int CONTACT_ACCOUNT_NAME_COLUMN_INDEX = 4;
 
     private static final String[] PHONE_COLUMNS = {
         Phone.DISPLAY_NAME,
@@ -70,7 +75,9 @@ public class ShortcutIntentBuilder {
         Phone.NUMBER,
         Phone.TYPE,
         Phone.LABEL,
-        Phone.LOOKUP_KEY
+        Phone.LOOKUP_KEY,
+        RawContacts.ACCOUNT_TYPE,
+        RawContacts.ACCOUNT_NAME
     };
 
     private static final int PHONE_DISPLAY_NAME_COLUMN_INDEX = 0;
@@ -79,6 +86,8 @@ public class ShortcutIntentBuilder {
     private static final int PHONE_TYPE_COLUMN_INDEX = 3;
     private static final int PHONE_LABEL_COLUMN_INDEX = 4;
     private static final int PHONE_LOOKUP_KEY_COLUMN_INDEX = 5;
+    private static final int PHONE_ACCOUNT_TYPE_COLUMN_INDEX = 6;
+    private static final int PHONE_ACCOUNT_NAME_COLUMN_INDEX = 7;
 
     private static final String[] PHOTO_COLUMNS = {
         Photo.PHOTO,
@@ -92,17 +101,17 @@ public class ShortcutIntentBuilder {
     private final Context mContext;
     private int mIconSize;
     private final int mIconDensity;
-    private final int mBorderWidth;
-    private final int mBorderColor;
+    private final int mOverlayTextBackgroundColor;
+    private final Resources mResources;
 
     /**
      * This is a hidden API of the launcher in JellyBean that allows us to disable the animation
-     * that it would usually do, because it interferes with our own animation for QuickContact
+     * that it would usually do, because it interferes with our own animation for QuickContact.
+     * This is needed since some versions of the launcher override the intent flags and therefore
+     * ignore Intent.FLAG_ACTIVITY_NO_ANIMATION.
      */
     public static final String INTENT_EXTRA_IGNORE_LAUNCH_ANIMATION =
             "com.android.launcher.intent.extra.shortcut.INGORE_LAUNCH_ANIMATION";
-
-    private static final String EXTRA_SHORTCUT_PACKAGENAME = "shortcut_packagename";
 
     /**
      * Listener interface.
@@ -123,17 +132,15 @@ public class ShortcutIntentBuilder {
         mContext = context;
         mListener = listener;
 
-        final Resources r = context.getResources();
+        mResources = context.getResources();
         final ActivityManager am = (ActivityManager) context
                 .getSystemService(Context.ACTIVITY_SERVICE);
-        mIconSize = r.getDimensionPixelSize(R.dimen.shortcut_icon_size);
+        mIconSize = mResources.getDimensionPixelSize(R.dimen.shortcut_icon_size);
         if (mIconSize == 0) {
             mIconSize = am.getLauncherLargeIconSize();
         }
         mIconDensity = am.getLauncherLargeIconDensity();
-        mBorderWidth = r.getDimensionPixelOffset(
-                R.dimen.shortcut_icon_border_width);
-        mBorderColor = r.getColor(R.color.shortcut_overlay_text_background);
+        mOverlayTextBackgroundColor = mResources.getColor(R.color.shortcut_overlay_text_background);
     }
 
     public void createContactShortcutIntent(Uri contactUri) {
@@ -190,6 +197,8 @@ public class ShortcutIntentBuilder {
     }
 
     private final class ContactLoadingAsyncTask extends LoadingAsyncTask {
+        private Account mAccount;
+
         public ContactLoadingAsyncTask(Uri uri) {
             super(uri);
         }
@@ -203,6 +212,13 @@ public class ShortcutIntentBuilder {
                     if (cursor.moveToFirst()) {
                         mDisplayName = cursor.getString(CONTACT_DISPLAY_NAME_COLUMN_INDEX);
                         mPhotoId = cursor.getLong(CONTACT_PHOTO_ID_COLUMN_INDEX);
+
+                        final String accountType = cursor
+                                .getString(CONTACT_ACCOUNT_TYPE_COLUMN_INDEX);
+                        final String accountName = cursor
+                                .getString(CONTACT_ACCOUNT_NAME_COLUMN_INDEX);
+                        mAccount = new Account(accountName, accountType);
+
                         mLookupKey = cursor.getString(CONTACT_LOOKUP_KEY_COLUMN_INDEX);
                     }
                 } finally {
@@ -212,7 +228,8 @@ public class ShortcutIntentBuilder {
         }
         @Override
         protected void onPostExecute(Void result) {
-            createContactShortcutIntent(mUri, mContentType, mDisplayName, mLookupKey, mBitmapData);
+            createContactShortcutIntent(mUri, mContentType, mDisplayName,
+                    mAccount, mLookupKey, mBitmapData);
         }
     }
 
@@ -221,6 +238,7 @@ public class ShortcutIntentBuilder {
         private String mPhoneNumber;
         private int mPhoneType;
         private String mPhoneLabel;
+        private Account mAccount;
 
         public PhoneNumberLoadingAsyncTask(Uri uri, String shortcutAction) {
             super(uri);
@@ -239,6 +257,13 @@ public class ShortcutIntentBuilder {
                         mPhoneNumber = cursor.getString(PHONE_NUMBER_COLUMN_INDEX);
                         mPhoneType = cursor.getInt(PHONE_TYPE_COLUMN_INDEX);
                         mPhoneLabel = cursor.getString(PHONE_LABEL_COLUMN_INDEX);
+
+                        final String accountType = cursor
+                                .getString(PHONE_ACCOUNT_TYPE_COLUMN_INDEX);
+                        final String accountName = cursor
+                                .getString(PHONE_ACCOUNT_NAME_COLUMN_INDEX);
+                        mAccount = new Account(accountName, accountType);
+
                         mLookupKey = cursor.getString(PHONE_LOOKUP_KEY_COLUMN_INDEX);
                     }
                 } finally {
@@ -250,42 +275,42 @@ public class ShortcutIntentBuilder {
         @Override
         protected void onPostExecute(Void result) {
             createPhoneNumberShortcutIntent(mUri, mDisplayName, mLookupKey, mBitmapData,
-                    mPhoneNumber, mPhoneType, mPhoneLabel, mShortcutAction);
+                    mPhoneNumber, mPhoneType, mPhoneLabel, mAccount, mShortcutAction);
         }
     }
 
-    private Drawable getPhotoDrawable(byte[] bitmapData, String displayName, String lookupKey) {
+    private Drawable getPhotoDrawable(byte[] bitmapData, String displayName,
+            String lookupKey, Account account) {
         if (bitmapData != null) {
             Bitmap bitmap = BitmapFactory.decodeByteArray(bitmapData, 0, bitmapData.length, null);
             return new BitmapDrawable(mContext.getResources(), bitmap);
         } else {
-            return ContactPhotoManager.getDefaultAvatarDrawableForContact(mContext.getResources(),
-                    false, new DefaultImageRequest(displayName, lookupKey));
+            return ContactPhotoManager.getDefaultAvatarDrawableForContact(mContext,
+                    false, new DefaultImageRequest(displayName, lookupKey, false), account);
         }
     }
 
     private void createContactShortcutIntent(Uri contactUri, String contentType, String displayName,
-            String lookupKey, byte[] bitmapData) {
-        Drawable drawable = getPhotoDrawable(bitmapData, displayName, lookupKey);
+            Account account, String lookupKey, byte[] bitmapData) {
+        Drawable drawable = getPhotoDrawable(bitmapData, displayName, lookupKey, account);
 
         Intent shortcutIntent = new Intent(ContactsContract.QuickContact.ACTION_QUICK_CONTACT);
 
         // When starting from the launcher, start in a new, cleared task.
         // CLEAR_WHEN_TASK_RESET cannot reset the root of a task, so we
         // clear the whole thing preemptively here since QuickContactActivity will
-        // finish itself when launching other detail activities.
-        shortcutIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        // finish itself when launching other detail activities. We need to use
+        // Intent.FLAG_ACTIVITY_NO_ANIMATION since not all versions of launcher will respect
+        // the INTENT_EXTRA_IGNORE_LAUNCH_ANIMATION intent extra.
+        shortcutIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                | Intent.FLAG_ACTIVITY_NO_ANIMATION);
 
         // Tell the launcher to not do its animation, because we are doing our own
         shortcutIntent.putExtra(INTENT_EXTRA_IGNORE_LAUNCH_ANIMATION, true);
 
         shortcutIntent.setDataAndType(contactUri, contentType);
-        shortcutIntent.putExtra(ContactsContract.QuickContact.EXTRA_MODE,
-                ContactsContract.QuickContact.MODE_LARGE);
         shortcutIntent.putExtra(ContactsContract.QuickContact.EXTRA_EXCLUDE_MIMES,
                 (String[]) null);
-        // Tell launcher the package name, so launcher can feedback by package name
-        shortcutIntent.putExtra(EXTRA_SHORTCUT_PACKAGENAME, mContext.getPackageName());
 
         final Bitmap icon = generateQuickContactIcon(drawable);
 
@@ -304,18 +329,18 @@ public class ShortcutIntentBuilder {
 
     private void createPhoneNumberShortcutIntent(Uri uri, String displayName, String lookupKey,
             byte[] bitmapData, String phoneNumber, int phoneType, String phoneLabel,
-            String shortcutAction) {
-        Drawable drawable = getPhotoDrawable(bitmapData, displayName, lookupKey);
+            Account account, String shortcutAction) {
+        Drawable drawable = getPhotoDrawable(bitmapData, displayName, lookupKey, account);
 
         Bitmap bitmap;
         Uri phoneUri;
         if (Intent.ACTION_CALL.equals(shortcutAction)) {
             // Make the URI a direct tel: URI so that it will always continue to work
-            phoneUri = Uri.fromParts(CallUtil.SCHEME_TEL, phoneNumber, null);
+            phoneUri = Uri.fromParts(PhoneAccount.SCHEME_TEL, phoneNumber, null);
             bitmap = generatePhoneNumberIcon(drawable, phoneType, phoneLabel,
                     R.drawable.badge_action_call);
         } else {
-            phoneUri = Uri.fromParts(CallUtil.SCHEME_SMSTO, phoneNumber, null);
+            phoneUri = Uri.fromParts(ContactsUtils.SCHEME_SMSTO, phoneNumber, null);
             bitmap = generatePhoneNumberIcon(drawable, phoneType, phoneLabel,
                     R.drawable.badge_action_sms);
         }
@@ -331,42 +356,29 @@ public class ShortcutIntentBuilder {
         mListener.onShortcutIntentCreated(uri, intent);
     }
 
-    private void drawBorder(Canvas canvas, Rect dst) {
-        // Darken the border
-        final Paint workPaint = new Paint();
-        workPaint.setColor(mBorderColor);
-        workPaint.setStyle(Paint.Style.STROKE);
-        // The stroke is drawn centered on the rect bounds, and since half will be drawn outside the
-        // bounds, we need to double the width for it to appear as intended.
-        workPaint.setStrokeWidth(mBorderWidth * 2);
-        canvas.drawRect(dst, workPaint);
-    }
-
     private Bitmap generateQuickContactIcon(Drawable photo) {
 
         // Setup the drawing classes
-        Bitmap icon = Bitmap.createBitmap(mIconSize, mIconSize, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(icon);
+        Bitmap bitmap = Bitmap.createBitmap(mIconSize, mIconSize, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
 
         // Copy in the photo
-        Paint photoPaint = new Paint();
-        photoPaint.setDither(true);
-        photoPaint.setFilterBitmap(true);
         Rect dst = new Rect(0,0, mIconSize, mIconSize);
         photo.setBounds(dst);
         photo.draw(canvas);
 
-        drawBorder(canvas, dst);
-
-        // Now draw the overlay
-        Drawable overlay = mContext.getResources().getDrawableForDensity(
-                com.android.internal.R.drawable.quickcontact_badge_overlay_dark, mIconDensity);
-
-        overlay.setBounds(dst);
-        overlay.draw(canvas);
+        // Draw the icon with a rounded border
+        RoundedBitmapDrawable roundedDrawable =
+                RoundedBitmapDrawableFactory.create(mResources, bitmap);
+        roundedDrawable.setAntiAlias(true);
+        roundedDrawable.setCornerRadius(mIconSize / 2);
+        Bitmap roundedBitmap = Bitmap.createBitmap(mIconSize, mIconSize, Bitmap.Config.ARGB_8888);
+        canvas.setBitmap(roundedBitmap);
+        roundedDrawable.setBounds(dst);
+        roundedDrawable.draw(canvas);
         canvas.setBitmap(null);
 
-        return icon;
+        return roundedBitmap;
     }
 
     /**
@@ -381,8 +393,7 @@ public class ShortcutIntentBuilder {
         Bitmap phoneIcon = ((BitmapDrawable) r.getDrawableForDensity(actionResId, mIconDensity))
                 .getBitmap();
 
-        // Setup the drawing classes
-        Bitmap icon = Bitmap.createBitmap(mIconSize, mIconSize, Bitmap.Config.ARGB_8888);
+        Bitmap icon = generateQuickContactIcon(photo);
         Canvas canvas = new Canvas(icon);
 
         // Copy in the photo
@@ -390,11 +401,6 @@ public class ShortcutIntentBuilder {
         photoPaint.setDither(true);
         photoPaint.setFilterBitmap(true);
         Rect dst = new Rect(0, 0, mIconSize, mIconSize);
-
-        photo.setBounds(dst);
-        photo.draw(canvas);
-
-        drawBorder(canvas, dst);
 
         // Create an overlay for the phone number type
         CharSequence overlay = Phone.getTypeLabel(r, phoneType, phoneLabel);
@@ -409,18 +415,15 @@ public class ShortcutIntentBuilder {
 
             // First fill in a darker background around the text to be drawn
             final Paint workPaint = new Paint();
-            workPaint.setColor(mBorderColor);
+            workPaint.setColor(mOverlayTextBackgroundColor);
             workPaint.setStyle(Paint.Style.FILL);
             final int textPadding = r
                     .getDimensionPixelOffset(R.dimen.shortcut_overlay_text_background_padding);
             final int textBandHeight = (fmi.descent - fmi.ascent) + textPadding * 2;
-            dst.set(0 + mBorderWidth, mIconSize - textBandHeight, mIconSize - mBorderWidth,
-                    mIconSize - mBorderWidth);
+            dst.set(0, mIconSize - textBandHeight, mIconSize, mIconSize);
             canvas.drawRect(dst, workPaint);
 
-            final float sidePadding = mBorderWidth;
-            overlay = TextUtils.ellipsize(overlay, textPaint, mIconSize - 2 * sidePadding,
-                    TruncateAt.END_SMALL);
+            overlay = TextUtils.ellipsize(overlay, textPaint, mIconSize, TruncateAt.END);
             final float textWidth = textPaint.measureText(overlay, 0, overlay.length());
             canvas.drawText(overlay, 0, overlay.length(), (mIconSize - textWidth) / 2, mIconSize
                     - fmi.descent - textPadding, textPaint);
@@ -431,7 +434,6 @@ public class ShortcutIntentBuilder {
         int iconWidth = icon.getWidth();
         dst.set(iconWidth - ((int) (20 * density)), -1,
                 iconWidth, ((int) (19 * density)));
-        dst.offset(-mBorderWidth, mBorderWidth);
         canvas.drawBitmap(phoneIcon, src, dst, photoPaint);
 
         canvas.setBitmap(null);

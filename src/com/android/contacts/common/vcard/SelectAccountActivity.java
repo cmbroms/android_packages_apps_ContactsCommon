@@ -58,8 +58,7 @@ public class SelectAccountActivity extends Activity {
         // - no account -> use phone-local storage without asking the user
         final int resId = R.string.import_from_sdcard;
         final AccountTypeManager accountTypes = AccountTypeManager.getInstance(this);
-        final List<AccountWithDataSet> accountList = accountTypes.getAccounts(true,
-                AccountTypeManager.FLAG_ALL_ACCOUNTS_WITHOUT_SIM);
+        final List<AccountWithDataSet> accountList = accountTypes.getAccounts(true);
         if (accountList.size() == 0) {
             Log.w(LOG_TAG, "Select phone-local storage account");
             finish();
@@ -106,7 +105,7 @@ public class SelectAccountActivity extends Activity {
                 }
                 return AccountSelectionUtil.getSelectAccountDialog(this, resId,
                         mAccountSelectionListener,
-                        new CancelListener(), false);
+                        new CancelListener());
             }
         }
         return super.onCreateDialog(resId, bundle);

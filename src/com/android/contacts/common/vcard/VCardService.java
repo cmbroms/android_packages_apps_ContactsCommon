@@ -151,6 +151,7 @@ public class VCardService extends Service {
         super.onCreate();
         mBinder = new MyBinder();
         if (DEBUG) Log.d(LOG_TAG, "vCard Service is being created.");
+        initExporterParams();
     }
 
     private void initExporterParams() {

@@ -16,8 +16,10 @@
 
 package com.android.contacts.common.test.mocks;
 
+import android.accounts.Account;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.view.View;
 import android.widget.ImageView;
 
 import com.android.contacts.common.ContactPhotoManager;
@@ -28,20 +30,28 @@ import com.android.contacts.common.ContactPhotoManager;
  */
 public class MockContactPhotoManager extends ContactPhotoManager {
     @Override
-    public void loadThumbnail(ImageView view, long photoId, boolean darkTheme,
-            DefaultImageRequest defaultImageRequest, DefaultImageProvider defaultProvider) {
-        defaultProvider.applyDefaultImage(view, -1, darkTheme, null);
+    public void loadThumbnail(ImageView view, long photoId, Account account,
+            boolean darkTheme, boolean isCircular,
+            DefaultImageRequest defaultImageRequest,
+            DefaultImageProvider defaultProvider) {
+        defaultProvider.applyDefaultImage(view, account, -1, darkTheme, null);
     }
 
     @Override
-    public void loadPhoto(ImageView view, Uri photoUri, int requestedExtent, boolean darkTheme,
-            DefaultImageRequest defaultImageRequest, DefaultImageProvider defaultProvider) {
-        defaultProvider.applyDefaultImage(view, requestedExtent, darkTheme, null);
+    public void loadPhoto(ImageView view, Uri photoUri, Account account,
+            int requestedExtent, boolean darkTheme, boolean isCircular,
+            DefaultImageRequest defaultImageRequest,
+            DefaultImageProvider defaultProvider) {
+        defaultProvider.applyDefaultImage(view, account, requestedExtent, darkTheme, null);
     }
 
     @Override
     public void removePhoto(ImageView view) {
         view.setImageDrawable(null);
+    }
+
+    @Override
+    public void cancelPendingRequests(View fragmentRootView) {
     }
 
     @Override

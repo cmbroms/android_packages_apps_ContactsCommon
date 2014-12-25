@@ -27,15 +27,15 @@ import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.StructuredPostal;
 import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.RawContacts;
-import android.telephony.MSimTelephonyManager;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 
 import com.android.contacts.common.MoreContactUtils;
 import com.android.contacts.common.R;
-import com.android.contacts.common.SimContactsConstants;
 import com.android.contacts.common.model.dataitem.DataKind;
+import com.android.internal.telephony.PhoneConstants;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -215,17 +215,6 @@ public abstract class AccountType {
     public String getViewGroupActivity() {
         return null;
     }
-
-    /** Returns an optional Activity string that can be used to view the stream item. */
-    public String getViewStreamItemActivity() {
-        return null;
-    }
-
-    /** Returns an optional Activity string that can be used to view the stream item photo. */
-    public String getViewStreamItemPhotoActivity() {
-        return null;
-    }
-
     /**
      * @return resource ID for the "invite contact" action label, or -1 if not defined.
      */
@@ -306,7 +295,6 @@ public abstract class AccountType {
             mTypeToAuthDescription.put(mAuthDescs[i].type, mAuthDescs[i]);
         }
     }
-
     public CharSequence getDisplayLabel(Context context) {
         CharSequence label = null;
         updateAuthDescriptions(context);
@@ -326,10 +314,9 @@ public abstract class AccountType {
 
     public CharSequence getDisplayLabel(Context context, String accountName) {
         if ((SimAccountType.ACCOUNT_TYPE).equals(accountType)) {
-            int sub = MoreContactUtils.getSubFromAccountName(accountName);
-            return MoreContactUtils.getMultiSimAliasesName(context, sub);
-        } else if (SimContactsConstants.PHONE_NAME.equals(accountName)) {
-            return context.getResources().getString(R.string.account_phone);
+            final int slot = MoreContactUtils.getSubscription(accountType,
+                    accountName);
+            return MoreContactUtils.getMultiSimAliasesName(context, slot);
         }
         return getDisplayLabel(context);
     }
@@ -343,10 +330,15 @@ public abstract class AccountType {
     public Drawable getDisplayIcon(Context context) {
         Drawable icon = null;
         updateAuthDescriptions(context);
+        if (PhoneAccountType.ACCOUNT_TYPE.equals(accountType)) {
+            return context.getResources().getDrawable(R.drawable.phone_account);
+        }
         if (mTypeToAuthDescription.containsKey(accountType)) {
             try {
-                AuthenticatorDescription desc = mTypeToAuthDescription.get(accountType);
-                Context authContext = context.createPackageContext(desc.packageName, 0);
+                AuthenticatorDescription desc = mTypeToAuthDescription
+                        .get(accountType);
+                Context authContext = context.createPackageContext(
+                        desc.packageName, 0);
                 icon = authContext.getResources().getDrawable(desc.iconId);
             } catch (PackageManager.NameNotFoundException e) {
             } catch (Resources.NotFoundException e) {
@@ -356,6 +348,30 @@ public abstract class AccountType {
             icon = context.getPackageManager().getDefaultActivityIcon();
         }
         return icon;
+    }
+
+    public Drawable getDisplayIcon(Context context, String accountName) {
+        if ((SimAccountType.ACCOUNT_TYPE).equals(accountType)) {
+            final int slot = MoreContactUtils.getSubscription(accountType,
+                    accountName);
+            if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+                switch (slot) {
+                case PhoneConstants.SUB1:
+                    return context.getResources().getDrawable(
+                            R.drawable.sim1_account);
+                case PhoneConstants.SUB2:
+                    return context.getResources().getDrawable(
+                            R.drawable.sim2_account);
+                default:
+                    return context.getResources().getDrawable(
+                            R.drawable.simcard_account);
+                }
+            } else {
+                return context.getResources().getDrawable(
+                        R.drawable.simcard_account);
+            }
+        }
+        return getDisplayIcon(context);
     }
 
     /**

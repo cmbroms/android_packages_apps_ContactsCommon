@@ -34,15 +34,19 @@ import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.CommonDataKinds.StructuredPostal;
 import android.provider.ContactsContract.CommonDataKinds.Website;
 import android.provider.ContactsContract.Contacts.Data;
+import android.provider.ContactsContract.Contacts.Entity;
 
-import com.android.contacts.common.model.dataitem.DataKind;
+import com.android.contacts.common.Collapser;
+import com.android.contacts.common.MoreContactUtils;
+import com.android.contacts.common.model.RawContactModifier;
 
 /**
  * This is the base class for data items, which represents a row from the Data table.
  */
-public class DataItem {
+public class DataItem implements Collapser.Collapsible<DataItem> {
 
     private final ContentValues mContentValues;
+    protected DataKind mKind;
 
     protected DataItem(ContentValues values) {
         mContentValues = values;
@@ -96,6 +100,10 @@ public class DataItem {
 
     public void setRawContactId(long rawContactId) {
         mContentValues.put(Data.RAW_CONTACT_ID, rawContactId);
+    }
+
+    public Long getRawContactId() {
+        return mContentValues.getAsLong(Data.RAW_CONTACT_ID);
     }
 
     /**
@@ -158,5 +166,70 @@ public class DataItem {
      */
     public String buildDataStringForDisplay(Context context, DataKind kind) {
         return buildDataString(context, kind);
+    }
+
+    public void setDataKind(DataKind kind) {
+        mKind = kind;
+    }
+
+    public DataKind getDataKind() {
+        return mKind;
+    }
+
+    public Integer getTimesUsed() {
+        return mContentValues.getAsInteger(Entity.TIMES_USED);
+    }
+
+    public Long getLastTimeUsed() {
+        return mContentValues.getAsLong(Entity.LAST_TIME_USED);
+    }
+
+    @Override
+    public void collapseWith(DataItem that) {
+        DataKind thisKind = getDataKind();
+        DataKind thatKind = that.getDataKind();
+        // If this does not have a type and that does, or if that's type is higher precedence,
+        // use that's type
+        if ((!hasKindTypeColumn(thisKind) && that.hasKindTypeColumn(thatKind)) ||
+                that.hasKindTypeColumn(thatKind) &&
+                RawContactModifier.getTypePrecedence(thisKind, getKindTypeColumn(thisKind))
+                >
+                RawContactModifier.getTypePrecedence(thatKind, that.getKindTypeColumn(thatKind))) {
+            mContentValues.put(thatKind.typeColumn, that.getKindTypeColumn(thatKind));
+            mKind = thatKind;
+        }
+
+        // Choose the max of the maxLines and maxLabelLines values.
+        mKind.maxLinesForDisplay = Math.max(thisKind.maxLinesForDisplay,
+                thatKind.maxLinesForDisplay);
+
+        // If any of the collapsed entries are super primary make the whole thing super primary.
+        if (isSuperPrimary() || that.isSuperPrimary()) {
+            mContentValues.put(Data.IS_SUPER_PRIMARY, 1);
+            mContentValues.put(Data.IS_PRIMARY, 1);
+        }
+
+        // If any of the collapsed entries are primary make the whole thing primary.
+        if (isPrimary() || that.isPrimary()) {
+            mContentValues.put(Data.IS_PRIMARY, 1);
+        }
+
+        // Add up the times used
+        mContentValues.put(Entity.TIMES_USED, (getTimesUsed() == null ? 0 : getTimesUsed()) +
+                (that.getTimesUsed() == null ? 0 : that.getTimesUsed()));
+
+        // Use the most recent time
+        mContentValues.put(Entity.LAST_TIME_USED,
+                Math.max(getLastTimeUsed() == null ? 0 : getLastTimeUsed(),
+                        that.getLastTimeUsed() == null ? 0 : that.getLastTimeUsed()));
+    }
+
+    @Override
+    public boolean shouldCollapseWith(DataItem t, Context context) {
+        if (mKind == null || t.getDataKind() == null) {
+            return false;
+        }
+        return MoreContactUtils.shouldCollapse(getMimeType(), buildDataString(context, mKind),
+                t.getMimeType(), t.buildDataString(context, t.getDataKind()));
     }
 }

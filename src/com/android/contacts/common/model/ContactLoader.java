@@ -40,7 +40,6 @@ import android.util.Log;
 
 import com.android.contacts.common.GeoUtil;
 import com.android.contacts.common.GroupMetaData;
-import com.android.contacts.common.model.AccountTypeManager;
 import com.android.contacts.common.model.account.AccountType;
 import com.android.contacts.common.model.account.AccountTypeWithDataSet;
 import com.android.contacts.common.util.Constants;
@@ -132,7 +131,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
                 RawContacts.ACCOUNT_NAME,
                 RawContacts.ACCOUNT_TYPE,
                 RawContacts.DATA_SET,
-                RawContacts.ACCOUNT_TYPE_AND_DATA_SET,
                 RawContacts.DIRTY,
                 RawContacts.VERSION,
                 RawContacts.SOURCE_ID,
@@ -141,7 +139,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
                 RawContacts.SYNC3,
                 RawContacts.SYNC4,
                 RawContacts.DELETED,
-                RawContacts.NAME_VERIFIED,
 
                 Contacts.Entity.DATA_ID,
                 Data.DATA1,
@@ -167,7 +164,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
                 Data.IS_PRIMARY,
                 Data.IS_SUPER_PRIMARY,
                 Data.MIMETYPE,
-                Data.RES_PACKAGE,
 
                 GroupMembership.GROUP_SOURCE_ID,
 
@@ -183,6 +179,9 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
                 Contacts.SEND_TO_VOICEMAIL,
                 Contacts.CUSTOM_RINGTONE,
                 Contacts.IS_USER_PROFILE,
+
+                Data.TIMES_USED,
+                Data.LAST_TIME_USED,
         };
 
         public static final int NAME_RAW_CONTACT_ID = 0;
@@ -204,57 +203,57 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         public static final int ACCOUNT_NAME = 15;
         public static final int ACCOUNT_TYPE = 16;
         public static final int DATA_SET = 17;
-        public static final int ACCOUNT_TYPE_AND_DATA_SET = 18;
-        public static final int DIRTY = 19;
-        public static final int VERSION = 20;
-        public static final int SOURCE_ID = 21;
-        public static final int SYNC1 = 22;
-        public static final int SYNC2 = 23;
-        public static final int SYNC3 = 24;
-        public static final int SYNC4 = 25;
-        public static final int DELETED = 26;
-        public static final int NAME_VERIFIED = 27;
+        public static final int DIRTY = 18;
+        public static final int VERSION = 19;
+        public static final int SOURCE_ID = 20;
+        public static final int SYNC1 = 21;
+        public static final int SYNC2 = 22;
+        public static final int SYNC3 = 23;
+        public static final int SYNC4 = 24;
+        public static final int DELETED = 25;
 
-        public static final int DATA_ID = 28;
-        public static final int DATA1 = 29;
-        public static final int DATA2 = 30;
-        public static final int DATA3 = 31;
-        public static final int DATA4 = 32;
-        public static final int DATA5 = 33;
-        public static final int DATA6 = 34;
-        public static final int DATA7 = 35;
-        public static final int DATA8 = 36;
-        public static final int DATA9 = 37;
-        public static final int DATA10 = 38;
-        public static final int DATA11 = 39;
-        public static final int DATA12 = 40;
-        public static final int DATA13 = 41;
-        public static final int DATA14 = 42;
-        public static final int DATA15 = 43;
-        public static final int DATA_SYNC1 = 44;
-        public static final int DATA_SYNC2 = 45;
-        public static final int DATA_SYNC3 = 46;
-        public static final int DATA_SYNC4 = 47;
-        public static final int DATA_VERSION = 48;
-        public static final int IS_PRIMARY = 49;
-        public static final int IS_SUPERPRIMARY = 50;
-        public static final int MIMETYPE = 51;
-        public static final int RES_PACKAGE = 52;
+        public static final int DATA_ID = 26;
+        public static final int DATA1 = 27;
+        public static final int DATA2 = 28;
+        public static final int DATA3 = 29;
+        public static final int DATA4 = 30;
+        public static final int DATA5 = 31;
+        public static final int DATA6 = 32;
+        public static final int DATA7 = 33;
+        public static final int DATA8 = 34;
+        public static final int DATA9 = 35;
+        public static final int DATA10 = 36;
+        public static final int DATA11 = 37;
+        public static final int DATA12 = 38;
+        public static final int DATA13 = 39;
+        public static final int DATA14 = 40;
+        public static final int DATA15 = 41;
+        public static final int DATA_SYNC1 = 42;
+        public static final int DATA_SYNC2 = 43;
+        public static final int DATA_SYNC3 = 44;
+        public static final int DATA_SYNC4 = 45;
+        public static final int DATA_VERSION = 46;
+        public static final int IS_PRIMARY = 47;
+        public static final int IS_SUPERPRIMARY = 48;
+        public static final int MIMETYPE = 49;
 
-        public static final int GROUP_SOURCE_ID = 53;
+        public static final int GROUP_SOURCE_ID = 50;
 
-        public static final int PRESENCE = 54;
-        public static final int CHAT_CAPABILITY = 55;
-        public static final int STATUS = 56;
-        public static final int STATUS_RES_PACKAGE = 57;
-        public static final int STATUS_ICON = 58;
-        public static final int STATUS_LABEL = 59;
-        public static final int STATUS_TIMESTAMP = 60;
+        public static final int PRESENCE = 51;
+        public static final int CHAT_CAPABILITY = 52;
+        public static final int STATUS = 53;
+        public static final int STATUS_RES_PACKAGE = 54;
+        public static final int STATUS_ICON = 55;
+        public static final int STATUS_LABEL = 56;
+        public static final int STATUS_TIMESTAMP = 57;
 
-        public static final int PHOTO_URI = 61;
-        public static final int SEND_TO_VOICEMAIL = 62;
-        public static final int CUSTOM_RINGTONE = 63;
-        public static final int IS_USER_PROFILE = 64;
+        public static final int PHOTO_URI = 58;
+        public static final int SEND_TO_VOICEMAIL = 59;
+        public static final int CUSTOM_RINGTONE = 60;
+        public static final int IS_USER_PROFILE = 61;
+
+        public static final int TIMES_USED = 62;
+        public static final int LAST_TIME_USED = 63;
     }
 
     /**
@@ -283,7 +282,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
             Groups.ACCOUNT_NAME,
             Groups.ACCOUNT_TYPE,
             Groups.DATA_SET,
-            Groups.ACCOUNT_TYPE_AND_DATA_SET,
             Groups._ID,
             Groups.TITLE,
             Groups.AUTO_ADD,
@@ -293,11 +291,10 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         public static final int ACCOUNT_NAME = 0;
         public static final int ACCOUNT_TYPE = 1;
         public static final int DATA_SET = 2;
-        public static final int ACCOUNT_TYPE_AND_DATA_SET = 3;
-        public static final int ID = 4;
-        public static final int TITLE = 5;
-        public static final int AUTO_ADD = 6;
-        public static final int FAVORITES = 7;
+        public static final int ID = 3;
+        public static final int TITLE = 4;
+        public static final int AUTO_ADD = 5;
+        public static final int FAVORITES = 6;
     }
 
     @Override
@@ -359,7 +356,7 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         final long directoryId =
                 Long.valueOf(uri.getQueryParameter(ContactsContract.DIRECTORY_PARAM_KEY));
 
-        final String displayName = json.getString(Contacts.DISPLAY_NAME);
+        final String displayName = json.optString(Contacts.DISPLAY_NAME);
         final String altDisplayName = json.optString(
                 Contacts.DISPLAY_NAME_ALTERNATIVE, displayName);
         final int displayNameSource = json.getInt(Contacts.DISPLAY_NAME_SOURCE);
@@ -503,11 +500,13 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
     }
 
     /**
-     * Looks for the photo data item in entities. If found, creates a new Bitmap instance. If
-     * not found, returns null
+     * Looks for the photo data item in entities. If found, a thumbnail will be stored. A larger
+     * photo will also be stored if available.
      */
     private void loadPhotoBinaryData(Contact contactData) {
-        // If we have a photo URI, try loading that first.
+        loadThumbnailBinaryData(contactData);
+
+        // Try to load the large photo from a file using the photo URI.
         String photoUri = contactData.getPhotoUri();
         if (photoUri != null) {
             try {
@@ -544,6 +543,10 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         }
 
         // If we couldn't load from a file, fall back to the data blob.
+        contactData.setPhotoBinaryData(contactData.getThumbnailPhotoBinaryData());
+    }
+
+    private void loadThumbnailBinaryData(Contact contactData) {
         final long photoId = contactData.getPhotoId();
         if (photoId <= 0) {
             // No photo ID
@@ -558,7 +561,7 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
                     }
 
                     final PhotoDataItem photo = (PhotoDataItem) dataItem;
-                    contactData.setPhotoBinaryData(photo.getPhoto());
+                    contactData.setThumbnailPhotoBinaryData(photo.getPhoto());
                     break;
                 }
             }
@@ -645,7 +648,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         cursorColumnToContentValues(cursor, cv, ContactQuery.ACCOUNT_NAME);
         cursorColumnToContentValues(cursor, cv, ContactQuery.ACCOUNT_TYPE);
         cursorColumnToContentValues(cursor, cv, ContactQuery.DATA_SET);
-        cursorColumnToContentValues(cursor, cv, ContactQuery.ACCOUNT_TYPE_AND_DATA_SET);
         cursorColumnToContentValues(cursor, cv, ContactQuery.DIRTY);
         cursorColumnToContentValues(cursor, cv, ContactQuery.VERSION);
         cursorColumnToContentValues(cursor, cv, ContactQuery.SOURCE_ID);
@@ -656,7 +658,6 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         cursorColumnToContentValues(cursor, cv, ContactQuery.DELETED);
         cursorColumnToContentValues(cursor, cv, ContactQuery.CONTACT_ID);
         cursorColumnToContentValues(cursor, cv, ContactQuery.STARRED);
-        cursorColumnToContentValues(cursor, cv, ContactQuery.NAME_VERIFIED);
 
         return cv;
     }
@@ -692,9 +693,10 @@ public class ContactLoader extends AsyncTaskLoader<Contact> {
         cursorColumnToContentValues(cursor, cv, ContactQuery.IS_PRIMARY);
         cursorColumnToContentValues(cursor, cv, ContactQuery.IS_SUPERPRIMARY);
         cursorColumnToContentValues(cursor, cv, ContactQuery.MIMETYPE);
-        cursorColumnToContentValues(cursor, cv, ContactQuery.RES_PACKAGE);
         cursorColumnToContentValues(cursor, cv, ContactQuery.GROUP_SOURCE_ID);
         cursorColumnToContentValues(cursor, cv, ContactQuery.CHAT_CAPABILITY);
+        cursorColumnToContentValues(cursor, cv, ContactQuery.TIMES_USED);
+        cursorColumnToContentValues(cursor, cv, ContactQuery.LAST_TIME_USED);
 
         return cv;
     }

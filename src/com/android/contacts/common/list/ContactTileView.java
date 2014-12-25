@@ -15,6 +15,7 @@
  */
 package com.android.contacts.common.list;
 
+import android.accounts.Account;
 import android.content.Context;
 import android.graphics.Rect;
 import android.net.Uri;
@@ -78,7 +79,7 @@ public abstract class ContactTileView extends FrameLayout {
                 if (mListener == null) return;
                 mListener.onContactSelected(
                         getLookupUri(),
-                        MoreContactUtils.getTargetRectFromView(mContext, ContactTileView.this));
+                        MoreContactUtils.getTargetRectFromView(ContactTileView.this));
             }
         };
     }
@@ -128,16 +129,18 @@ public abstract class ContactTileView extends FrameLayout {
                 DefaultImageRequest request = getDefaultImageRequest(entry.name, entry.lookupKey);
                 configureViewForImage(entry.photoUri == null);
                 if (mPhoto != null) {
-                    mPhotoManager.loadPhoto(mPhoto, entry.photoUri, getApproximateImageSize(),
-                            isDarkTheme(), request);
+                    mPhotoManager.loadPhoto(mPhoto, entry.photoUri,
+                            entry.account, getApproximateImageSize(),
+                            isDarkTheme(), isContactPhotoCircular(), request);
 
                     if (mQuickContact != null) {
                         mQuickContact.assignContactUri(mLookupUri);
                     }
                 } else if (mQuickContact != null) {
                     mQuickContact.assignContactUri(mLookupUri);
-                    mPhotoManager.loadPhoto(mQuickContact, entry.photoUri,
-                            getApproximateImageSize(), isDarkTheme(), request);
+                    mPhotoManager.loadPhoto(mQuickContact, entry.photoUri, entry.account,
+                            getApproximateImageSize(), isDarkTheme(), isContactPhotoCircular(),
+                            request);
                 }
             } else {
                 Log.w(TAG, "contactPhotoManager not set");
@@ -167,6 +170,10 @@ public abstract class ContactTileView extends FrameLayout {
 
     protected QuickContactBadge getQuickContact() {
         return mQuickContact;
+    }
+
+    protected View getPhotoView() {
+        return mPhoto;
     }
 
     /**
@@ -206,7 +213,15 @@ public abstract class ContactTileView extends FrameLayout {
      * as desired, or {@code null}.
      */
     protected DefaultImageRequest getDefaultImageRequest(String displayName, String lookupKey) {
-        return new DefaultImageRequest(displayName, lookupKey);
+        return new DefaultImageRequest(displayName, lookupKey, isContactPhotoCircular());
+    }
+
+    /**
+     * Whether contact photo should be displayed as a circular image. Implemented by subclasses
+     * so they can change which drawables to fetch.
+     */
+    protected boolean isContactPhotoCircular() {
+        return true;
     }
 
     public interface Listener {

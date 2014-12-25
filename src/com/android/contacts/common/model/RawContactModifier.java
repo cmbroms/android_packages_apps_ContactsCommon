@@ -27,7 +27,6 @@ import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Event;
 import android.provider.ContactsContract.CommonDataKinds.GroupMembership;
 import android.provider.ContactsContract.CommonDataKinds.Im;
-import android.provider.ContactsContract.CommonDataKinds.LocalGroup;
 import android.provider.ContactsContract.CommonDataKinds.Nickname;
 import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract.CommonDataKinds.Organization;
@@ -488,7 +487,7 @@ public class RawContactModifier {
      */
     public static boolean isEmpty(ValuesDelta values, DataKind kind) {
         if (Photo.CONTENT_ITEM_TYPE.equals(kind.mimeType)) {
-            return values.isInsert() && values.getAsByteArray(Photo.PHOTO) == null;
+            return values.getAsByteArray(Photo.PHOTO) == null;
         }
 
         // No defined fields mean this row is always empty
@@ -997,8 +996,7 @@ public class RawContactModifier {
                 if (!kind.editable) continue;
                 final String mimeType = kind.mimeType;
                 if (DataKind.PSEUDO_MIME_TYPE_DISPLAY_NAME.equals(mimeType)
-                        || DataKind.PSEUDO_MIME_TYPE_PHONETIC_NAME.equals(mimeType)
-                        || LocalGroup.CONTENT_ITEM_TYPE.equals(mimeType)) {
+                        || DataKind.PSEUDO_MIME_TYPE_PHONETIC_NAME.equals(mimeType)) {
                     // Ignore pseudo data.
                     continue;
                 } else if (StructuredName.CONTENT_ITEM_TYPE.equals(mimeType)) {

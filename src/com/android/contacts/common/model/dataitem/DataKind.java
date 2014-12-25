@@ -46,8 +46,6 @@ public final class DataKind {
     public int iconAltRes;
     public int iconAltDescriptionRes;
     public int weight;
-    // The max length of the EditText.
-    public int maxLength;
     public boolean editable;
 
     public StringInflater actionHeader;

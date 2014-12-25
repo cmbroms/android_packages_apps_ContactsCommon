@@ -173,7 +173,7 @@ public class FormatUtils {
             }
 
             // Skip this word
-            if (i < textLength && Character.isLetterOrDigit(text.charAt(i))) {
+            while (i < textLength && Character.isLetterOrDigit(text.charAt(i))) {
                 i++;
             }
         }

@@ -1,5 +1,5 @@
 /*
-  * Copyright (C) 2013, The Linux Foundation. All Rights Reserved.
+  * Copyright (C) 2014, The Linux Foundation. All Rights Reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are
@@ -33,13 +33,12 @@ import android.content.Context;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
-import android.telephony.MSimTelephonyManager;
-import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.inputmethod.EditorInfo;
 import android.graphics.drawable.Drawable;
 
 import com.android.contacts.common.R;
+import com.android.contacts.common.SimContactsConstants;
 import com.android.contacts.common.model.account.AccountType.DefinitionException;
 import com.android.contacts.common.model.dataitem.DataKind;
 import com.google.android.collect.Lists;
@@ -47,7 +46,7 @@ import com.google.android.collect.Lists;
 public class SimAccountType extends BaseAccountType{
     private static final String TAG = "SimContactsType";
 
-    public static final String ACCOUNT_TYPE = "com.android.sim";
+    public static final String ACCOUNT_TYPE = SimContactsConstants.ACCOUNT_TYPE_SIM;
     public static final int FLAGS_PERSON_NAME = EditorInfo.TYPE_CLASS_TEXT
             | EditorInfo.TYPE_TEXT_FLAG_CAP_WORDS | EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME;
     public static final int FLAGS_PHONETIC = EditorInfo.TYPE_CLASS_TEXT
@@ -57,10 +56,8 @@ public class SimAccountType extends BaseAccountType{
 
     public SimAccountType(Context context, String resPackageName) {
         this.accountType = ACCOUNT_TYPE;
-        this.resourcePackageName = null;
+        this.resourcePackageName = resPackageName;
         this.syncAdapterPackageName = resPackageName;
-        this.titleRes = R.string.account_sim;
-        this.iconRes = R.drawable.ic_launcher_contacts;
 
         this.mContext = context;
 
@@ -79,7 +76,7 @@ public class SimAccountType extends BaseAccountType{
     protected DataKind addDataKindStructuredName(Context context) throws DefinitionException {
         final DataKind kind = super.addDataKindStructuredName(context);
         kind.fieldList = Lists.newArrayList();
-        kind.fieldList.add(new EditField(StructuredName.DISPLAY_NAME, R.string.name_for_sim,
+        kind.fieldList.add(new EditField(StructuredName.DISPLAY_NAME, R.string.nameLabelsGroup,
                 FLAGS_PERSON_NAME));
 
         return kind;
@@ -107,8 +104,6 @@ public class SimAccountType extends BaseAccountType{
 
         kind.typeOverallMax = 1;
         kind.typeColumn = Email.TYPE;
-        kind.typeList = Lists.newArrayList();
-        kind.typeList.add(buildEmailType(Email.TYPE_MOBILE));
         kind.fieldList = Lists.newArrayList();
         kind.fieldList.add(new EditField(Email.ADDRESS, R.string.emailLabelsGroup, FLAGS_EMAIL));
         return kind;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, The Linux Foundation. All Rights Reserved.
+ * Copyright (C) 2014, The Linux Foundation. All Rights Reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are
@@ -47,16 +47,16 @@ import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.RawContacts;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.TelephonyManager;
+import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.util.Log;
-import android.telephony.MSimTelephonyManager;
+
+import com.android.contacts.common.SimContactsConstants;
 
 public class SimContactsOperation {
 
     private static final String  TAG = "SimContactsOperation";
     private static final boolean DBG = true;
-    private static final int SUB1 = 0;
-    private static final int SUB2 = 1;
     private static final int QUERY_TOKEN = 0;
     private static final int INSERT_TOKEN = 1;
     private static final int UPDATE_TOKEN = 2;
@@ -87,6 +87,7 @@ public class SimContactsOperation {
         this.mContext = context;
         this.mResolver = context.getContentResolver();
     }
+
 
     public Uri insert(ContentValues values, int subscription) {
 
@@ -164,17 +165,12 @@ public class SimContactsOperation {
 
     private Uri getContentUri(int subscription) {
         Uri uri = null;
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            if (subscription == SUB1) {
-                uri = Uri.parse("content://iccmsim/adn");
-            } else if (subscription == SUB2) {
-                uri = Uri.parse("content://iccmsim/adn_sub2");
-            } else {
-                // we should never reach here.
-                log("invalid mSubscription");
-            }
+        long[] subId = SubscriptionManager.getSubId(subscription);
+
+        if (subId != null && TelephonyManager.getDefault().isMultiSimEnabled()) {
+            uri = Uri.parse(SimContactsConstants.SIM_SUB_URI + subId[0]);
         } else {
-            uri = Uri.parse("content://icc/adn");
+            uri = Uri.parse(SimContactsConstants.SIM_URI);
         }
         return uri;
     }
@@ -238,39 +234,26 @@ public class SimContactsOperation {
                         Email.CONTENT_ITEM_TYPE, ContactsContract.CommonDataKinds.Email.DATA);
                 mValues.put(SimContactsConstants.STR_EMAILS, emails);
             }
-        } 
+        }
         return mValues;
     }
 
     public static int getSimSubscription(long contactId) {
-        int subscription = -1;
+        int subscription = SimContactsConstants.SUB_INVALID;
         Cursor cursor = setupAccountCursor(contactId);
         if (cursor == null || cursor.getCount() == 0) {
-            subscription = -1;
             return subscription;
         }
 
         String accountName = cursor.getString(cursor.getColumnIndex(RawContacts.ACCOUNT_NAME));
         String accountType = cursor.getString(cursor.getColumnIndex(RawContacts.ACCOUNT_TYPE));
         if (accountType == null || accountName == null) {
-            subscription = -1;
             return subscription;
         }
         if (SimContactsConstants.ACCOUNT_TYPE_SIM.equals(accountType)) {
-            if (SimContactsConstants.SIM_NAME.equals(accountName)) {
-                subscription = SimContactsConstants.SUB_1;
-            }
-            else if(SimContactsConstants.SIM_NAME_1.equals(accountName)) {
-                subscription = SimContactsConstants.SUB_1;
-            }
-            else if (SimContactsConstants.SIM_NAME_2.equals(accountName)) {
-                subscription = SimContactsConstants.SUB_2;
-            }
-            cursor.close();
-        } else {
-            subscription = -1;
-            cursor.close();
+            subscription = MoreContactUtils.getSubscription(accountType, accountName);
         }
+        cursor.close();
         return subscription;
     }
 
@@ -300,7 +283,6 @@ public class SimContactsOperation {
                 retval.append(c.getString(c.getColumnIndex(columnName)));
             }
 
-            c.close();
         } catch (Exception e) {
             Log.e(TAG, e.getMessage());
         } finally {

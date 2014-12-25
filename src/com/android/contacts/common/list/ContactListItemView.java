@@ -35,7 +35,6 @@ import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.TextUtils.TruncateAt;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -52,6 +51,10 @@ import com.android.contacts.common.ContactStatusUtil;
 import com.android.contacts.common.R;
 import com.android.contacts.common.format.TextHighlighter;
 import com.android.contacts.common.util.SearchUtil;
+import com.android.contacts.common.util.ViewUtil;
+import com.android.contacts.common.widget.CheckableImageView;
+import com.android.contacts.common.widget.CheckableQuickContactBadge;
+
 import com.google.common.collect.Lists;
 
 import java.util.ArrayList;
@@ -85,15 +88,15 @@ public class ContactListItemView extends ViewGroup
     private int mGapBetweenLabelAndData = 0;
     private int mPresenceIconMargin = 4;
     private int mPresenceIconSize = 16;
-    private int mHeaderTextColor = Color.BLACK;
-    private int mHeaderTextIndent = 0;
-    private int mHeaderTextSize = 12;
-    private int mHeaderUnderlineHeight = 1;
-    private int mHeaderUnderlineColor = 0;
-    private int mCountViewTextSize = 12;
-    private int mContactsCountTextColor = Color.BLACK;
     private int mTextIndent = 0;
+    private int mTextOffsetTop;
+    private int mNameTextViewTextSize;
+    private int mHeaderWidth;
     private Drawable mActivatedBackgroundDrawable;
+
+    // Set in onLayout. Represent left and right position of the View on the screen.
+    private int mLeftOffset;
+    private int mRightOffset;
 
     /**
      * Used with {@link #mLabelView}, specifying the width ratio between label and data.
@@ -103,15 +106,6 @@ public class ContactListItemView extends ViewGroup
      * Used with {@link #mDataView}, specifying the width ratio between label and data.
      */
     private int mDataViewWidthWeight = 5;
-
-    // Will be used with adjustListItemSelectionBounds().
-    private int mSelectionBoundsMarginLeft;
-    private int mSelectionBoundsMarginRight;
-
-    // Horizontal divider between contact views.
-    private boolean mHorizontalDividerVisible = true;
-    private Drawable mHorizontalDividerDrawable;
-    private int mHorizontalDividerHeight;
 
     protected static class HighlightSequence {
         private final int start;
@@ -144,34 +138,31 @@ public class ContactListItemView extends ViewGroup
         final int layoutDirection = TextUtils.getLayoutDirectionFromLocale(locale);
         switch (layoutDirection) {
             case View.LAYOUT_DIRECTION_RTL:
-                return (opposite ? PhotoPosition.RIGHT : PhotoPosition.LEFT);
+                return (PhotoPosition.RIGHT);
             case View.LAYOUT_DIRECTION_LTR:
             default:
-                return (opposite ? PhotoPosition.LEFT : PhotoPosition.RIGHT);
+                return (opposite ? PhotoPosition.RIGHT : PhotoPosition.LEFT);
         }
     }
 
     private PhotoPosition mPhotoPosition = getDefaultPhotoPosition(false /* normal/non opposite */);
 
     // Header layout data
-    private boolean mHeaderVisible;
-    private View mHeaderDivider;
-    private int mHeaderBackgroundHeight = 30;
     private TextView mHeaderTextView;
+    private boolean mIsSectionHeaderEnabled;
 
     // The views inside the contact view
     private boolean mQuickContactEnabled = true;
     private boolean mQuickCallButtonEnabled = false;
-    private QuickContactBadge mQuickContact;
+    private CheckableQuickContactBadge mQuickContact;
     private ImageView mQuickCallView;
-    private ImageView mPhotoView;
+    private CheckableImageView mPhotoView;
     private TextView mNameTextView;
     private TextView mPhoneticNameTextView;
     private TextView mLabelView;
     private TextView mDataView;
     private TextView mSnippetView;
     private TextView mStatusView;
-    private TextView mCountView;
     private ImageView mPresenceIcon;
     private String mQuickCallKey;
 
@@ -219,6 +210,7 @@ public class ContactListItemView extends ViewGroup
     private boolean mPhotoViewWidthAndHeightAreReady = false;
 
     private int mNameTextViewHeight;
+    private int mNameTextViewTextColor = Color.BLACK;
     private int mPhoneticNameTextViewHeight;
     private int mLabelViewHeight;
     private int mDataViewHeight;
@@ -239,6 +231,7 @@ public class ContactListItemView extends ViewGroup
     private final CharArrayBuffer mPhoneticNameBuffer = new CharArrayBuffer(128);
 
     private boolean mActivatedStateSupported;
+    private boolean mAdjustSelectionBoundsEnabled = true;
 
     private Rect mBoundsWithoutHeader = new Rect();
 
@@ -250,15 +243,16 @@ public class ContactListItemView extends ViewGroup
 
     public ContactListItemView(Context context) {
         super(context);
-        mContext = context;
 
         mTextHighlighter = new TextHighlighter(Typeface.BOLD,
                 context.getResources().getColor(R.color.text_highlight_color));
+
+        mNameHighlightSequence = new ArrayList<HighlightSequence>();
+        mNumberHighlightSequence = new ArrayList<HighlightSequence>();
     }
 
     public ContactListItemView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        mContext = context;
 
         // Read all style values
         TypedArray a = getContext().obtainStyledAttributes(attrs, R.styleable.ContactListItemView);
@@ -266,8 +260,6 @@ public class ContactListItemView extends ViewGroup
                 R.styleable.ContactListItemView_list_item_height, mPreferredHeight);
         mActivatedBackgroundDrawable = a.getDrawable(
                 R.styleable.ContactListItemView_activated_background);
-        mHorizontalDividerDrawable = a.getDrawable(
-                R.styleable.ContactListItemView_list_item_divider);
 
         mGapBetweenImageAndText = a.getDimensionPixelOffset(
                 R.styleable.ContactListItemView_list_item_gap_between_image_and_text,
@@ -285,39 +277,26 @@ public class ContactListItemView extends ViewGroup
         mDefaultQuickCallViewSize = a.getDimensionPixelOffset(
                 R.styleable.ContactListItemView_list_item_quick_call_size,
                 mDefaultQuickCallViewSize);
-        mHeaderTextIndent = a.getDimensionPixelOffset(
-                R.styleable.ContactListItemView_list_item_header_text_indent, mHeaderTextIndent);
-        mHeaderTextColor = a.getColor(
-                R.styleable.ContactListItemView_list_item_header_text_color, mHeaderTextColor);
-        mHeaderTextSize = a.getDimensionPixelSize(
-                R.styleable.ContactListItemView_list_item_header_text_size, mHeaderTextSize);
-        mHeaderBackgroundHeight = a.getDimensionPixelSize(
-                R.styleable.ContactListItemView_list_item_header_height, mHeaderBackgroundHeight);
-        mHeaderUnderlineHeight = a.getDimensionPixelSize(
-                R.styleable.ContactListItemView_list_item_header_underline_height,
-                mHeaderUnderlineHeight);
-        mHeaderUnderlineColor = a.getColor(
-                R.styleable.ContactListItemView_list_item_header_underline_color,
-                mHeaderUnderlineColor);
         mTextIndent = a.getDimensionPixelOffset(
                 R.styleable.ContactListItemView_list_item_text_indent, mTextIndent);
-        mCountViewTextSize = a.getDimensionPixelSize(
-                R.styleable.ContactListItemView_list_item_contacts_count_text_size,
-                mCountViewTextSize);
-        mContactsCountTextColor = a.getColor(
-                R.styleable.ContactListItemView_list_item_contacts_count_text_color,
-                mContactsCountTextColor);
+        mTextOffsetTop = a.getDimensionPixelOffset(
+                R.styleable.ContactListItemView_list_item_text_offset_top, mTextOffsetTop);
         mDataViewWidthWeight = a.getInteger(
                 R.styleable.ContactListItemView_list_item_data_width_weight, mDataViewWidthWeight);
         mLabelViewWidthWeight = a.getInteger(
                 R.styleable.ContactListItemView_list_item_label_width_weight,
                 mLabelViewWidthWeight);
+        mNameTextViewTextColor = a.getColor(
+                R.styleable.ContactListItemView_list_item_name_text_color, mNameTextViewTextColor);
+        mNameTextViewTextSize = (int) a.getDimension(
+                R.styleable.ContactListItemView_list_item_name_text_size,
+                (int) getResources().getDimension(R.dimen.contact_browser_list_item_text_size));
         mQuickCallViewImageId = a.getResourceId(
                 R.styleable.ContactListItemView_list_item_quick_call_view_source,
-                mQuickCallViewImageId);
-        mQuickCallViewImageId = a.getResourceId(
+                R.drawable.ic_action_call);
+        mQuickCallViewBgId = a.getResourceId(
                 R.styleable.ContactListItemView_list_item_quick_call_view_background,
-                mQuickCallViewBgId);
+                R.drawable.ic_action_call_background);
 
         setPaddingRelative(
                 a.getDimensionPixelOffset(
@@ -330,15 +309,17 @@ public class ContactListItemView extends ViewGroup
                         R.styleable.ContactListItemView_list_item_padding_bottom, 0));
 
         mTextHighlighter = new TextHighlighter(Typeface.BOLD,
-                context.getResources().getColor(R.color.text_highlight_color));
+            context.getResources().getColor(R.color.text_highlight_color));
+
 
         a.recycle();
 
-        a = getContext().obtainStyledAttributes(android.R.styleable.Theme);
-        mSecondaryTextColor = a.getColorStateList(android.R.styleable.Theme_textColorSecondary);
+        a = getContext().obtainStyledAttributes(R.styleable.Theme);
+        mSecondaryTextColor = a.getColorStateList(R.styleable.Theme_android_textColorSecondary);
         a.recycle();
 
-        mHorizontalDividerHeight = mHorizontalDividerDrawable.getIntrinsicHeight();
+        mHeaderWidth =
+                getResources().getDimensionPixelSize(R.dimen.contact_list_section_header_width);
 
         if (mActivatedBackgroundDrawable != null) {
             mActivatedBackgroundDrawable.setCallback(this);
@@ -346,6 +327,8 @@ public class ContactListItemView extends ViewGroup
 
         mNameHighlightSequence = new ArrayList<HighlightSequence>();
         mNumberHighlightSequence = new ArrayList<HighlightSequence>();
+
+        setLayoutDirection(View.LAYOUT_DIRECTION_LOCALE);
     }
 
     public void setUnknownNameText(CharSequence unknownNameText) {
@@ -377,12 +360,7 @@ public class ContactListItemView extends ViewGroup
         // We will match parent's width and wrap content vertically, but make sure
         // height is no less than listPreferredItemHeight.
         final int specWidth = resolveSize(0, widthMeasureSpec);
-        final int preferredHeight;
-        if (mHorizontalDividerVisible) {
-            preferredHeight = mPreferredHeight + mHorizontalDividerHeight;
-        } else {
-            preferredHeight = mPreferredHeight;
-        }
+        final int preferredHeight = mPreferredHeight;
 
         mNameTextViewHeight = 0;
         mPhoneticNameTextViewHeight = 0;
@@ -396,7 +374,7 @@ public class ContactListItemView extends ViewGroup
         ensureQuickCallViewSize();
 
         // Width each TextView is able to use.
-        final int effectiveWidth;
+        int effectiveWidth;
         // All the other Views will honor the photo, so available width for them may be shrunk.
         if (mPhotoViewWidth > 0 || mKeepHorizontalPaddingForPhotoView) {
             effectiveWidth = specWidth - getPaddingLeft() - getPaddingRight()
@@ -405,11 +383,15 @@ public class ContactListItemView extends ViewGroup
             effectiveWidth = specWidth - getPaddingLeft() - getPaddingRight() - mQuickCallViewWidth;
         }
 
+        if (mIsSectionHeaderEnabled) {
+            effectiveWidth -= mHeaderWidth + mGapBetweenImageAndText;
+        }
+
         // Go over all visible text views and measure actual width of each of them.
         // Also calculate their heights to get the total height for this entire view.
 
         if (isVisible(mNameTextView)) {
-            // Caculate width for name text - this parallels similar measurement in onLayout.
+            // Calculate width for name text - this parallels similar measurement in onLayout.
             int nameTextWidth = effectiveWidth;
             if (mPhotoPosition != PhotoPosition.LEFT) {
                 nameTextWidth -= mTextIndent;
@@ -506,29 +488,14 @@ public class ContactListItemView extends ViewGroup
         // Make sure the height is at least as high as the photo
         height = Math.max(height, mPhotoViewHeight + getPaddingBottom() + getPaddingTop());
 
-        // Add horizontal divider height
-        if (mHorizontalDividerVisible) {
-            height += mHorizontalDividerHeight;
-        }
-
         // Make sure height is at least the preferred height
         height = Math.max(height, preferredHeight);
 
-        // Add the height of the header if visible
-        if (mHeaderVisible) {
-            final int headerWidth = specWidth -
-                    getPaddingLeft() - getPaddingRight() - mHeaderTextIndent;
+        // Measure the header if it is visible.
+        if (mHeaderTextView != null && mHeaderTextView.getVisibility() == VISIBLE) {
             mHeaderTextView.measure(
-                    MeasureSpec.makeMeasureSpec(headerWidth, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(mHeaderBackgroundHeight, MeasureSpec.EXACTLY));
-            if (mCountView != null) {
-                mCountView.measure(
-                        MeasureSpec.makeMeasureSpec(headerWidth, MeasureSpec.AT_MOST),
-                        MeasureSpec.makeMeasureSpec(mHeaderBackgroundHeight, MeasureSpec.EXACTLY));
-            }
-            mHeaderBackgroundHeight = Math.max(mHeaderBackgroundHeight,
-                    mHeaderTextView.getMeasuredHeight());
-            height += (mHeaderBackgroundHeight + mHeaderUnderlineHeight);
+                    MeasureSpec.makeMeasureSpec(mHeaderWidth, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
         }
 
         if (isVisible(mQuickCallView)) {
@@ -551,38 +518,37 @@ public class ContactListItemView extends ViewGroup
         int leftBound = getPaddingLeft();
         int rightBound = width - getPaddingRight();
 
-        final boolean isLayoutRtl = isLayoutRtl();
+        final boolean isLayoutRtl = ViewUtil.isViewLayoutRtl(this);
 
-        // Put the header in the top of the contact view (Text + underline view)
-        if (mHeaderVisible) {
-            mHeaderTextView.layout(isLayoutRtl ? leftBound : leftBound + mHeaderTextIndent,
-                    0,
-                    isLayoutRtl ? rightBound - mHeaderTextIndent : rightBound,
-                    mHeaderBackgroundHeight);
-            if (mCountView != null) {
-                mCountView.layout(rightBound - mCountView.getMeasuredWidth(),
-                        0,
-                        rightBound,
-                        mHeaderBackgroundHeight);
+        // Put the section header on the left side of the contact view.
+        if (mIsSectionHeaderEnabled) {
+            if (mHeaderTextView != null) {
+                int headerHeight = mHeaderTextView.getMeasuredHeight();
+                int headerTopBound = (bottomBound + topBound - headerHeight) / 2 + mTextOffsetTop;
+
+                mHeaderTextView.layout(
+                        isLayoutRtl ? rightBound - mHeaderWidth : leftBound,
+                        headerTopBound,
+                        isLayoutRtl ? rightBound : leftBound + mHeaderWidth,
+                        headerTopBound + headerHeight);
             }
-            mHeaderDivider.layout(leftBound,
-                    mHeaderBackgroundHeight,
-                    rightBound,
-                    mHeaderBackgroundHeight + mHeaderUnderlineHeight);
-            topBound += (mHeaderBackgroundHeight + mHeaderUnderlineHeight);
+            if (isLayoutRtl) {
+                rightBound -= mHeaderWidth;
+            } else {
+                leftBound += mHeaderWidth;
+            }
         }
 
-        // Put horizontal divider at the bottom
-        if (mHorizontalDividerVisible) {
-            mHorizontalDividerDrawable.setBounds(
-                    leftBound,
-                    height - mHorizontalDividerHeight,
-                    rightBound,
-                    height);
-            bottomBound -= mHorizontalDividerHeight;
+        mBoundsWithoutHeader.set(left + leftBound, topBound, left + rightBound, bottomBound);
+        mLeftOffset = left + leftBound;
+        mRightOffset = left + rightBound;
+        if (mIsSectionHeaderEnabled) {
+            if (isLayoutRtl) {
+                rightBound -= mGapBetweenImageAndText;
+            } else {
+                leftBound += mGapBetweenImageAndText;
+            }
         }
-
-        mBoundsWithoutHeader.set(0, topBound, width, bottomBound);
 
         if (mActivatedStateSupported && isActivated()) {
             mActivatedBackgroundDrawable.setBounds(mBoundsWithoutHeader);
@@ -624,10 +590,10 @@ public class ContactListItemView extends ViewGroup
             leftBound += mTextIndent;
         }
 
-        // Center text vertically
+        // Center text vertically, then apply the top offset.
         final int totalTextHeight = mNameTextViewHeight + mPhoneticNameTextViewHeight +
                 mLabelAndDataViewMaxHeight + mSnippetTextViewHeight + mStatusTextViewHeight;
-        int textTopBound = (bottomBound + topBound - totalTextHeight) / 2;
+        int textTopBound = (bottomBound + topBound - totalTextHeight) / 2 + mTextOffsetTop;
 
         // Layout all text view and presence icon
         // Put name TextView first
@@ -749,10 +715,12 @@ public class ContactListItemView extends ViewGroup
 
     @Override
     public void adjustListItemSelectionBounds(Rect bounds) {
-        bounds.top += mBoundsWithoutHeader.top;
-        bounds.bottom = bounds.top + mBoundsWithoutHeader.height();
-        bounds.left += mSelectionBoundsMarginLeft;
-        bounds.right -= mSelectionBoundsMarginRight;
+        if (mAdjustSelectionBoundsEnabled) {
+            bounds.top += mBoundsWithoutHeader.top;
+            bounds.bottom = bounds.top + mBoundsWithoutHeader.height();
+            bounds.left = mBoundsWithoutHeader.left;
+            bounds.right = mBoundsWithoutHeader.right;
+        }
     }
 
     protected boolean isVisible(View view) {
@@ -783,7 +751,7 @@ public class ContactListItemView extends ViewGroup
      */
     private void ensureQuickCallViewSize() {
         mQuickCallViewWidth = mQuickCallViewHeight = getDefaultQuickCallViewSize();
-        if (!mQuickCallButtonEnabled && mQuickCallView == null) {
+        if (!mQuickCallButtonEnabled || mQuickCallView == null) {
             mQuickCallViewWidth = 0;
             mQuickCallViewHeight = 0;
         }
@@ -843,19 +811,8 @@ public class ContactListItemView extends ViewGroup
         if (mActivatedStateSupported && isActivated()) {
             mActivatedBackgroundDrawable.draw(canvas);
         }
-        if (mHorizontalDividerVisible) {
-            mHorizontalDividerDrawable.draw(canvas);
-        }
 
         super.dispatchDraw(canvas);
-    }
-
-    /**
-     * Sets the flag that determines whether a divider should drawn at the bottom
-     * of the view.
-     */
-    public void setDividerVisible(boolean visible) {
-        mHorizontalDividerVisible = visible;
     }
 
     /**
@@ -864,33 +821,22 @@ public class ContactListItemView extends ViewGroup
     public void setSectionHeader(String title) {
         if (!TextUtils.isEmpty(title)) {
             if (mHeaderTextView == null) {
-                mHeaderTextView = new TextView(mContext);
-                mHeaderTextView.setTextColor(mHeaderTextColor);
-                mHeaderTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX, mHeaderTextSize);
-                mHeaderTextView.setTextAppearance(mContext, R.style.SectionHeaderStyle);
-                mHeaderTextView.setGravity(Gravity.CENTER_VERTICAL);
-                mHeaderTextView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+                mHeaderTextView = new TextView(getContext());
+                mHeaderTextView.setTextAppearance(getContext(), R.style.SectionHeaderStyle);
+                mHeaderTextView.setGravity(
+                        ViewUtil.isViewLayoutRtl(this) ? Gravity.RIGHT : Gravity.LEFT);
                 addView(mHeaderTextView);
-            }
-            if (mHeaderDivider == null) {
-                mHeaderDivider = new View(mContext);
-                mHeaderDivider.setBackgroundColor(mHeaderUnderlineColor);
-                addView(mHeaderDivider);
             }
             setMarqueeText(mHeaderTextView, title);
             mHeaderTextView.setVisibility(View.VISIBLE);
-            mHeaderDivider.setVisibility(View.VISIBLE);
             mHeaderTextView.setAllCaps(true);
-            mHeaderVisible = true;
-        } else {
-            if (mHeaderTextView != null) {
-                mHeaderTextView.setVisibility(View.GONE);
-            }
-            if (mHeaderDivider != null) {
-                mHeaderDivider.setVisibility(View.GONE);
-            }
-            mHeaderVisible = false;
+        } else if (mHeaderTextView != null) {
+            mHeaderTextView.setVisibility(View.GONE);
         }
+    }
+
+    public void setIsSectionHeaderEnabled(boolean isSectionHeaderEnabled) {
+        mIsSectionHeaderEnabled = isSectionHeaderEnabled;
     }
 
     /**
@@ -909,10 +855,11 @@ public class ContactListItemView extends ViewGroup
             throw new IllegalStateException("QuickContact is disabled for this view");
         }
         if (mQuickContact == null) {
-            mQuickContact = new QuickContactBadge(mContext);
+            mQuickContact = new CheckableQuickContactBadge(getContext());
+            mQuickContact.setOverlay(null);
             mQuickContact.setLayoutParams(getDefaultPhotoLayoutParams());
             if (mNameTextView != null) {
-                mQuickContact.setContentDescription(mContext.getString(
+                mQuickContact.setContentDescription(getContext().getString(
                         R.string.description_quick_contact_for, mNameTextView.getText()));
             }
 
@@ -922,12 +869,21 @@ public class ContactListItemView extends ViewGroup
         return mQuickContact;
     }
 
+    public void setChecked(boolean checked, boolean animate) {
+        if (mQuickContact != null) {
+            mQuickContact.setChecked(checked, animate);
+        }
+        if (mPhotoView != null) {
+            mPhotoView.setChecked(checked, animate);
+        }
+    }
+
     /**
      * Returns the photo view, creating it if necessary.
      */
     public ImageView getPhotoView() {
         if (mPhotoView == null) {
-            mPhotoView = new ImageView(mContext);
+            mPhotoView = new CheckableImageView(getContext());
             mPhotoView.setLayoutParams(getDefaultPhotoLayoutParams());
             // Quick contact style used above will set a background - remove it
             mPhotoView.setBackground(null);
@@ -1033,16 +989,19 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getNameTextView() {
         if (mNameTextView == null) {
-            mNameTextView = new TextView(mContext);
+            mNameTextView = new TextView(getContext());
             mNameTextView.setSingleLine(true);
             mNameTextView.setEllipsize(getTextEllipsis());
-            mNameTextView.setTextAppearance(mContext, R.style.TextAppearanceMedium);
+            mNameTextView.setTextColor(mNameTextViewTextColor);
+            mNameTextView.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                    mNameTextViewTextSize);
             // Manually call setActivated() since this view may be added after the first
             // setActivated() call toward this whole item view.
             mNameTextView.setActivated(isActivated());
             mNameTextView.setGravity(Gravity.CENTER_VERTICAL);
             mNameTextView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
             mNameTextView.setId(R.id.cliv_name_textview);
+            mNameTextView.setElegantTextHeight(false);
             addView(mNameTextView);
         }
         return mNameTextView;
@@ -1068,10 +1027,10 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getPhoneticNameTextView() {
         if (mPhoneticNameTextView == null) {
-            mPhoneticNameTextView = new TextView(mContext);
+            mPhoneticNameTextView = new TextView(getContext());
             mPhoneticNameTextView.setSingleLine(true);
             mPhoneticNameTextView.setEllipsize(getTextEllipsis());
-            mPhoneticNameTextView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
+            mPhoneticNameTextView.setTextAppearance(getContext(), android.R.style.TextAppearance_Small);
             mPhoneticNameTextView.setTypeface(mPhoneticNameTextView.getTypeface(), Typeface.BOLD);
             mPhoneticNameTextView.setActivated(isActivated());
             mPhoneticNameTextView.setId(R.id.cliv_phoneticname_textview);
@@ -1100,12 +1059,11 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getLabelView() {
         if (mLabelView == null) {
-            mLabelView = new TextView(mContext);
+            mLabelView = new TextView(getContext());
             mLabelView.setSingleLine(true);
             mLabelView.setEllipsize(getTextEllipsis());
-            mLabelView.setTextAppearance(mContext, R.style.TextAppearanceSmall);
+            mLabelView.setTextAppearance(getContext(), R.style.TextAppearanceSmall);
             if (mPhotoPosition == PhotoPosition.LEFT) {
-                //mLabelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, mCountViewTextSize);
                 mLabelView.setAllCaps(true);
                 mLabelView.setGravity(Gravity.END);
             } else {
@@ -1137,15 +1095,20 @@ public class ContactListItemView extends ViewGroup
      * Sets phone number for a list item. This takes care of number highlighting if the highlight
      * mask exists.
      */
-    public void setPhoneNumber(String text) {
+    public void setPhoneNumber(String text, String countryIso) {
         if (text == null) {
             if (mDataView != null) {
                 mDataView.setVisibility(View.GONE);
             }
         } else {
             getDataView();
+
+            // TODO: Format number using PhoneNumberUtils.formatNumber before assigning it to
+            // mDataView. Make sure that determination of the highlight sequences are done only
+            // after number formatting.
+
             // Sets phone number texts for display after highlighting it, if applicable.
-            //CharSequence textToSet = text;
+            // CharSequence textToSet = text;
             final SpannableString textToSet = new SpannableString(text);
 
             if (mNumberHighlightSequence.size() != 0) {
@@ -1189,12 +1152,13 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getDataView() {
         if (mDataView == null) {
-            mDataView = new TextView(mContext);
+            mDataView = new TextView(getContext());
             mDataView.setSingleLine(true);
             mDataView.setEllipsize(getTextEllipsis());
-            mDataView.setTextAppearance(mContext, R.style.TextAppearanceSmall);
+            mDataView.setTextAppearance(getContext(), R.style.TextAppearanceSmall);
             mDataView.setActivated(isActivated());
             mDataView.setId(R.id.cliv_data_view);
+            mDataView.setElegantTextHeight(false);
             addView(mDataView);
         }
         return mDataView;
@@ -1219,10 +1183,10 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getSnippetView() {
         if (mSnippetView == null) {
-            mSnippetView = new TextView(mContext);
+            mSnippetView = new TextView(getContext());
             mSnippetView.setSingleLine(true);
             mSnippetView.setEllipsize(getTextEllipsis());
-            mSnippetView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
+            mSnippetView.setTextAppearance(getContext(), android.R.style.TextAppearance_Small);
             mSnippetView.setActivated(isActivated());
             addView(mSnippetView);
         }
@@ -1234,49 +1198,16 @@ public class ContactListItemView extends ViewGroup
      */
     public TextView getStatusView() {
         if (mStatusView == null) {
-            mStatusView = new TextView(mContext);
+            mStatusView = new TextView(getContext());
             mStatusView.setSingleLine(true);
             mStatusView.setEllipsize(getTextEllipsis());
-            mStatusView.setTextAppearance(mContext, android.R.style.TextAppearance_Small);
+            mStatusView.setTextAppearance(getContext(), android.R.style.TextAppearance_Small);
             mStatusView.setTextColor(mSecondaryTextColor);
             mStatusView.setActivated(isActivated());
             mStatusView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
             addView(mStatusView);
         }
         return mStatusView;
-    }
-
-    /**
-     * Returns the text view for the contacts count, creating it if necessary.
-     */
-    public TextView getCountView() {
-        if (mCountView == null) {
-            mCountView = new TextView(mContext);
-            mCountView.setSingleLine(true);
-            mCountView.setEllipsize(getTextEllipsis());
-            mCountView.setTextAppearance(mContext, android.R.style.TextAppearance_Medium);
-            mCountView.setTextColor(R.color.people_app_theme_color);
-            addView(mCountView);
-        }
-        return mCountView;
-    }
-
-    /**
-     * Adds or updates a text view for the contacts count.
-     */
-    public void setCountView(CharSequence text) {
-        if (TextUtils.isEmpty(text)) {
-            if (mCountView != null) {
-                mCountView.setVisibility(View.GONE);
-            }
-        } else {
-            getCountView();
-            setMarqueeText(mCountView, text);
-            mCountView.setTextSize(TypedValue.COMPLEX_UNIT_PX, mCountViewTextSize);
-            mCountView.setGravity(Gravity.CENTER_VERTICAL);
-            mCountView.setTextColor(mContactsCountTextColor);
-            mCountView.setVisibility(VISIBLE);
-        }
     }
 
     /**
@@ -1300,7 +1231,7 @@ public class ContactListItemView extends ViewGroup
     public void setPresence(Drawable icon) {
         if (icon != null) {
             if (mPresenceIcon == null) {
-                mPresenceIcon = new ImageView(mContext);
+                mPresenceIcon = new ImageView(getContext());
                 addView(mPresenceIcon);
             }
             mPresenceIcon.setImageDrawable(icon);
@@ -1325,7 +1256,7 @@ public class ContactListItemView extends ViewGroup
         // no guarantee that when the quick contact is initialized the display name is already set,
         // do it here too.
         if (mQuickContact != null) {
-            mQuickContact.setContentDescription(mContext.getString(
+            mQuickContact.setContentDescription(getContext().getString(
                     R.string.description_quick_contact_for, mNameTextView.getText()));
         }
     }
@@ -1614,13 +1545,12 @@ public class ContactListItemView extends ViewGroup
         setData(mDataBuffer.data, mDataBuffer.sizeCopied);
     }
 
-    public void showPhoneNumber(Cursor cursor, int dataColumnIndex) {
-        // Highlights the number and aligns text before showing.
-        setPhoneNumber(cursor.getString(dataColumnIndex));
-    }
-
     public void setActivatedStateSupported(boolean flag) {
         this.mActivatedStateSupported = flag;
+    }
+
+    public void setAdjustSelectionBoundsEnabled(boolean enabled) {
+        mAdjustSelectionBoundsEnabled = enabled;
     }
 
     @Override
@@ -1637,15 +1567,6 @@ public class ContactListItemView extends ViewGroup
 
     public PhotoPosition getPhotoPosition() {
         return mPhotoPosition;
-    }
-
-    /**
-     * Specifies left and right margin for selection bounds. See also
-     * {@link #adjustListItemSelectionBounds(Rect)}.
-     */
-    public void setSelectionBoundsHorizontalMargin(int left, int right) {
-        mSelectionBoundsMarginLeft = left;
-        mSelectionBoundsMarginRight = right;
     }
 
     /**
@@ -1669,7 +1590,7 @@ public class ContactListItemView extends ViewGroup
         // If the touch event's coordinates are not within the view's header, then delegate
         // to super.onTouchEvent so that regular view behavior is preserved. Otherwise, consume
         // and ignore the touch event.
-        if (mBoundsWithoutHeader.contains((int) x, (int) y) || !pointInView(x, y, 0)) {
+        if (mBoundsWithoutHeader.contains((int) x, (int) y) || !pointIsInView(x, y)) {
             return super.onTouchEvent(event);
         } else {
             return false;
@@ -1694,5 +1615,10 @@ public class ContactListItemView extends ViewGroup
         if (mListener != null && mQuickCallView != null) {
             mQuickCallView.setOnClickListener(mListener);
         }
+    }
+
+    private final boolean pointIsInView(float localX, float localY) {
+        return localX >= mLeftOffset && localX < mRightOffset
+                && localY >= 0 && localY < (getBottom() - getTop());
     }
 }

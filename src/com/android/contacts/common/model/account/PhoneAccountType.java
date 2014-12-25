@@ -1,5 +1,5 @@
 /*
-  * Copyright (C) 2013, The Linux Foundation. All Rights Reserved.
+  * Copyright (C) 2014, The Linux Foundation. All Rights Reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are
@@ -41,6 +41,7 @@ import android.util.Log;
 import android.view.inputmethod.EditorInfo;
 
 import com.android.contacts.common.R;
+import com.android.contacts.common.SimContactsConstants;
 import com.android.contacts.common.model.account.AccountType.DefinitionException;
 import com.google.android.collect.Lists;
 
@@ -48,7 +49,7 @@ import com.google.android.collect.Lists;
 public class PhoneAccountType extends BaseAccountType{
     private static final String TAG = "PhoneAccountType";
 
-    public static final String ACCOUNT_TYPE = "com.android.localphone";
+    public static final String ACCOUNT_TYPE = SimContactsConstants.ACCOUNT_TYPE_PHONE;
     public static final int FLAGS_PERSON_NAME = EditorInfo.TYPE_CLASS_TEXT
             | EditorInfo.TYPE_TEXT_FLAG_CAP_WORDS | EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME;
     protected static final int FLAGS_PHONE = EditorInfo.TYPE_CLASS_PHONE;
@@ -72,12 +73,12 @@ public class PhoneAccountType extends BaseAccountType{
             addDataKindPhoto(context);
             addDataKindNote(context);
             addDataKindWebsite(context);
-            //addDataKindGroupMembership(context);
-            addDataKindLocalGroups(context);
+            addDataKindGroupMembership(context);
             if (context.getResources().getBoolean(
                     com.android.internal.R.bool.config_built_in_sip_phone)) {
                 addDataKindSipAddress(context);
             }
+
             mIsInitialized = true;
         } catch (DefinitionException e) {
             Log.e(TAG, "Problem building account type", e);

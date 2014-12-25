@@ -139,9 +139,7 @@ public class ExportProcessor extends ProcessorBase {
             // composer = new VCardComposer(ExportVCardActivity.this, vcardType, true);
 
             writer = new BufferedWriter(new OutputStreamWriter(outputStream));
-            final Uri contentUriForRawContactsEntity = RawContactsEntity.CONTENT_URI.buildUpon()
-                    .appendQueryParameter(RawContactsEntity.FOR_EXPORT_ONLY, "1")
-                    .build();
+            final Uri contentUriForRawContactsEntity = RawContactsEntity.CONTENT_URI;
             // TODO: should provide better selection.
             if (!composer.init(Contacts.CONTENT_URI, new String[] {Contacts._ID},
                     selExport, null,
@@ -265,8 +263,8 @@ public class ExportProcessor extends ProcessorBase {
         final Intent intent = new Intent();
         intent.setClassName(mService, mCallingActivity);
         final Notification notification =
-                NotificationImportExportListener.constructFinishNotification(mService,
-                        VCardService.TYPE_EXPORT, title, description, intent);
+                NotificationImportExportListener.constructFinishNotification(mService, VCardService.TYPE_EXPORT,
+                        title, description, intent);
         mNotificationManager.notify(NotificationImportExportListener.DEFAULT_NOTIFICATION_TAG,
                 mJobId, notification);
     }

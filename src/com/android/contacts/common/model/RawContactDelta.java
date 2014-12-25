@@ -36,7 +36,7 @@ import android.util.Log;
 import com.android.contacts.common.model.AccountTypeManager;
 import com.android.contacts.common.model.ValuesDelta;
 import com.android.contacts.common.model.account.AccountType;
-import com.android.contacts.common.test.NeededForTesting;
+import com.android.contacts.common.testing.NeededForTesting;
 import com.android.contacts.common.SimContactsConstants;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -430,7 +430,7 @@ public class RawContactDelta implements Parcelable {
         ValuesDelta nameValuesDelta = null;
         ValuesDelta emailValuesDelta = null;
 
-        if (names != null && names.size() > 0) {
+        if (getMimeEntriesCount(StructuredName.CONTENT_ITEM_TYPE, true) > 0) {
             nameValuesDelta = names.get(0);
             names.get(0).putNull(StructuredName.GIVEN_NAME);
             names.get(0).putNull(StructuredName.FAMILY_NAME);
@@ -456,12 +456,12 @@ public class RawContactDelta implements Parcelable {
             if (isContactInsert()) {
                 name = nameValuesDelta.getAsString(StructuredName.DISPLAY_NAME);
             } else {
-                if (nameValuesDelta.mBefore != null) {
-                    name = nameValuesDelta.mBefore
+                if (nameValuesDelta.getBefore() != null) {
+                    name = nameValuesDelta.getBefore()
                         .getAsString(StructuredName.DISPLAY_NAME);
                 }
-                if (nameValuesDelta.mAfter != null) {
-                    newName = nameValuesDelta.mAfter
+                if (nameValuesDelta.getAfter() != null) {
+                    newName = nameValuesDelta.getAfter()
                         .getAsString(StructuredName.DISPLAY_NAME);
                 }
             }
@@ -487,12 +487,12 @@ public class RawContactDelta implements Parcelable {
             }
         } else if(phones != null) {
             for (ValuesDelta valuesDelta : phones) {
-                if (valuesDelta.mBefore != null
-                        && valuesDelta.mBefore.size() != 0) {
-                    if (Phone.TYPE_MOBILE == valuesDelta.mBefore.getAsLong(Phone.TYPE) ) {
-                        number = valuesDelta.mBefore.getAsString(Phone.NUMBER);
+                if (valuesDelta.getBefore() != null
+                        && valuesDelta.getBefore().size() != 0) {
+                    if (Phone.TYPE_MOBILE == valuesDelta.getBefore().getAsLong(Phone.TYPE) ) {
+                        number = valuesDelta.getBefore().getAsString(Phone.NUMBER);
                     } else {
-                        anr.append(valuesDelta.mBefore.getAsString(Phone.NUMBER));
+                        anr.append(valuesDelta.getBefore().getAsString(Phone.NUMBER));
                         anr.append(",");
                     }
                 }
@@ -522,14 +522,14 @@ public class RawContactDelta implements Parcelable {
             }
         } else if (emails != null) {
             for (ValuesDelta valuesDelta : emails) {
-                if (valuesDelta.mBefore != null
-                        && valuesDelta.mBefore.size() != 0) {
-                    email.append(valuesDelta.mBefore.getAsString(Email.DATA));
+                if (valuesDelta.getBefore() != null
+                        && valuesDelta.getBefore().size() != 0) {
+                    email.append(valuesDelta.getBefore().getAsString(Email.DATA));
                     email.append(",");
                 }
                 if (valuesDelta.getAfter() != null
                         && valuesDelta.getAfter().size() != 0) {
-                        newEmail.append(valuesDelta.mAfter.getAsString(Email.DATA));
+                        newEmail.append(valuesDelta.getAfter().getAsString(Email.DATA));
                         newEmail.append(",");
                 }
             }

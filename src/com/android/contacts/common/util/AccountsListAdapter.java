@@ -26,7 +26,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.android.contacts.common.R;
-import com.android.contacts.common.SimContactsConstants;
 import com.android.contacts.common.model.AccountTypeManager;
 import com.android.contacts.common.model.account.AccountType;
 import com.android.contacts.common.model.account.AccountWithDataSet;
@@ -52,8 +51,7 @@ public final class AccountsListAdapter extends BaseAdapter {
         ALL_ACCOUNTS,                   // All read-only and writable accounts
         ACCOUNTS_CONTACT_WRITABLE,      // Only where the account type is contact writable
         ACCOUNTS_GROUP_WRITABLE,        // Only accounts where the account type is group writable
-        ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM,
-        ACCOUNTS_CONTACT_WRITABLE_WITHOUT_PHONE
+        ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM
     }
 
     public AccountsListAdapter(Context context, AccountListFilter accountListFilter) {
@@ -70,22 +68,23 @@ public final class AccountsListAdapter extends BaseAdapter {
         mAccountTypes = AccountTypeManager.getInstance(context);
         mAccounts = getAccounts(accountListFilter);
 
+        // Add a virtual local storage account to allow user to store its contacts in the phone
+        String localAccountName = context.getString(R.string.local_storage_account);
+        mAccounts.add(0, new AccountWithDataSet(localAccountName, AccountType.LOCAL_ACCOUNT, null));
+
         if (currentAccount != null
-                && !mAccounts.contains(currentAccount)) {
+                && !mAccounts.isEmpty()
+                && !mAccounts.get(0).equals(currentAccount)
+                && mAccounts.remove(currentAccount)) {
             mAccounts.add(0, currentAccount);
         }
-        if (!mAccounts.contains(AccountWithDataSet.LOCAL_PHONE_ACCOUNT)) {
-            // Add a virtual local storage account to allow user to store its contacts in the phone
-            mAccounts.add(0, AccountWithDataSet.LOCAL_PHONE_ACCOUNT);
-        }
-
         mInflater = LayoutInflater.from(context);
     }
 
     private List<AccountWithDataSet> getAccounts(AccountListFilter accountListFilter) {
         if (accountListFilter == AccountListFilter.ACCOUNTS_GROUP_WRITABLE) {
-            return new ArrayList<AccountWithDataSet>(mAccountTypes.getAccounts(true,
-                    AccountTypeManager.FLAG_ALL_ACCOUNTS));
+            return new ArrayList<AccountWithDataSet>(mAccountTypes.getAccounts(
+                    true, AccountTypeManager.FLAG_ALL_ACCOUNTS_WITHOUT_SIM));
         }
         final List<AccountWithDataSet> writableAccountList = mAccountTypes
                 .getAccounts(accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE
@@ -95,12 +94,6 @@ public final class AccountsListAdapter extends BaseAdapter {
         if (accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM) {
             for (AccountWithDataSet account : writableAccountList) {
                 if (SimAccountType.ACCOUNT_TYPE.equals(account.type))
-                    deletedList.add(account);
-            }
-            writableAccountList.removeAll(deletedList);
-        } else if (accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_PHONE) {
-            for (AccountWithDataSet account : writableAccountList) {
-                if (PhoneAccountType.ACCOUNT_TYPE.equals(account.type))
                     deletedList.add(account);
             }
             writableAccountList.removeAll(deletedList);
@@ -133,7 +126,7 @@ public final class AccountsListAdapter extends BaseAdapter {
         text2.setText(account.name);
         text2.setEllipsize(TruncateAt.MIDDLE);
 
-        icon.setImageDrawable(accountType.getDisplayIcon(mContext));
+        icon.setImageDrawable(accountType.getDisplayIcon(mContext, account.name));
 
         return resultView;
     }

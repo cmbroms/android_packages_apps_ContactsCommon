@@ -22,7 +22,6 @@ import android.accounts.Account;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
-import android.app.DialogFragment;
 import android.app.FragmentManager;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
@@ -39,7 +38,6 @@ import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.content.OperationApplicationException;
 import android.database.Cursor;
-import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.net.Uri;
 import android.os.Bundle;
@@ -49,15 +47,13 @@ import android.os.RemoteException;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.RawContacts;
-import android.provider.ContactsContract.QuickContact;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.Data;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.Settings;
-import android.provider.Settings.System;
-import android.telephony.MSimTelephonyManager;
 import android.telephony.TelephonyManager;
+import android.telephony.SubscriptionManager;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -79,6 +75,7 @@ import com.android.contacts.common.util.AccountSelectionUtil;
 import com.android.contacts.common.util.AccountsListAdapter.AccountListFilter;
 import com.android.contacts.common.vcard.ExportVCardActivity;
 import com.android.contacts.common.vcard.VCardCommonArguments;
+import com.android.dialerbind.analytics.AnalyticsDialogFragment;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -87,20 +84,24 @@ import java.util.Iterator;
 /**
  * An dialog invoked to import/export contacts.
  */
-public class ImportExportDialogFragment extends DialogFragment
+public class ImportExportDialogFragment extends AnalyticsDialogFragment
         implements SelectAccountDialogFragment.Listener {
     public static final String TAG = "ImportExportDialogFragment";
+
     private static final String SIM_INDEX = "sim_index";
 
     private static final String KEY_RES_ID = "resourceId";
     private static final String ARG_CONTACTS_ARE_AVAILABLE = "CONTACTS_ARE_AVAILABLE";
-    private static int mSelectedSim = SimContactsConstants.SUB_INVALID;
+    private static int SIM_ID_INVALID = -1;
+    private static int mSelectedSim = SIM_ID_INVALID;
+
+    private static final boolean DEBUG = true;
 
     public static final int SUBACTIVITY_EXPORT_CONTACTS = 100;
 
     // This values must be consistent with ImportExportDialogFragment.SUBACTIVITY_EXPORT_CONTACTS.
     // This values is set 101,That is avoid to conflict with other new subactivity.
-    public static final int SUBACTIVITY_SHARE_VISIBLE_CONTACTS = 101;
+    public static final int SUBACTIVITY_SHARE_VISILBLE_CONTACTS = 101;
     public static final int MAX_COUNT_ALLOW_SHARE_CONTACT = 2000;
 
     private final String[] LOOKUP_PROJECTION = new String[] {
@@ -113,34 +114,13 @@ public class ImportExportDialogFragment extends DialogFragment
     static final int PHONE_NUMBER_COLUMN_INDEX = 3;
     static final int PHONE_DISPLAY_NAME_COLUMN_INDEX = 4;
     static final int PHONE_CONTACT_ID_COLUMN_INDEX = 5;
-
     // This value needs to start at 7. See {@link PeopleActivity}.
     public static final int SUBACTIVITY_MULTI_PICK_CONTACT = 7;
-
-    //decide whether pick phone or contacts
-    private static final String IS_CONTACT = "is_contact";
-
-    // indicate that we want to export contacts
-    private static final String WANT_EXPORT = "want_export";
-
-    // multi-pick contacts which contains email address
-    private static final String ACTION_MULTI_PICK_EMAIL =
-        "com.android.contacts.action.MULTI_PICK_EMAIL";
-
-    // multi-pick contacts
-    private static final String ACTION_MULTI_PICK =
-        "com.android.contacts.action.MULTI_PICK";
-
     //TODO: we need to refactor the export code in future release.
     // QRD enhancement: export subscription selected by user
     public static int mExportSub;
-
     //this flag is the same as defined in MultiPickContactActivit
     private static final String EXT_NOT_SHOW_SIM_FLAG = "not_sim_show";
-    // the max count limit of Chinese code or not
-    private static final int CONTACT_NAME_MAX_LENGTH_NOT_CHN = 14;
-    private static final int CONTACT_NAME_MAX_LENGTH_CHN = 6;
-
     // QRD enhancement: Toast handler for exporting concat to sim card
     private static final int TOAST_EXPORT_FAILED = 0;
     private static final int TOAST_EXPORT_FINISHED = 1;
@@ -154,20 +134,18 @@ public class ImportExportDialogFragment extends DialogFragment
     private static final int TOAST_EXPORT_NO_PHONE_OR_EMAIL = 5;
     // only for sim contacts haven't been loaded completely
     private static final int TOAST_SIM_CARD_NOT_LOAD_COMPLETE = 6;
-    private static final boolean DEBUG = false;
-    private static boolean isMenuItemClicked = false;
     private SimContactsOperation mSimContactsOperation;
     private ArrayAdapter<Integer> mAdapter;
-    private Activity mActiv;
+    private Activity mActivity;
     private static boolean isExportingToSIM = false;
     public static boolean isExportingToSIM(){
         return isExportingToSIM;
     }
     private static ExportToSimThread mExportThread = null;
-    public ExportToSimThread createExportToSimThread(int type, int subscription,
-        ArrayList<String[]> contactList, Activity mAactivity){
+    public ExportToSimThread createExportToSimThread(int subscription,
+            ArrayList<String[]> contactList, Activity mActivity) {
         if (mExportThread == null)
-            mExportThread = new ExportToSimThread(type, subscription, contactList,  mAactivity);
+            mExportThread = new ExportToSimThread(subscription, contactList,  mActivity);
         return mExportThread;
     }
 
@@ -178,25 +156,26 @@ public class ImportExportDialogFragment extends DialogFragment
         mExportThread.showExportProgressDialog(activity);
     }
     /** Preferred way to show this dialog */
-    public static void show(FragmentManager fragmentManager,
-            boolean contactsAreAvailable, Class callingActivity) {
+    public static void show(FragmentManager fragmentManager, boolean contactsAreAvailable,
+            Class callingActivity) {
         final ImportExportDialogFragment fragment = new ImportExportDialogFragment();
         Bundle args = new Bundle();
         args.putBoolean(ARG_CONTACTS_ARE_AVAILABLE, contactsAreAvailable);
         args.putString(VCardCommonArguments.ARG_CALLING_ACTIVITY, callingActivity.getName());
         fragment.setArguments(args);
         fragment.show(fragmentManager, ImportExportDialogFragment.TAG);
-        isMenuItemClicked = false;
     }
 
-    private String getMultiSimName(int subscription) {
-        return Settings.System.getString(getActivity().getContentResolver(),
-                MoreContactUtils.MULTI_SIM_NAME[subscription]);
+    @Override
+    public void onAttach(Activity activity) {
+        super.onAttach(activity);
+        sendScreenView();
     }
+
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         // Wrap our context to inflate list items using the correct theme
-        mActiv = getActivity();
+        mActivity = getActivity();
         final Resources res = getActivity().getResources();
         final LayoutInflater dialogInflater = (LayoutInflater)getActivity()
                 .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
@@ -226,55 +205,38 @@ public class ImportExportDialogFragment extends DialogFragment
                 new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                isMenuItemClicked = true;
-                boolean dismissDialog;
                 final int resId = mAdapter.getItem(which);
                 switch (resId) {
                     case R.string.import_from_sim: {
-
-                        // after click import from sim,we set this value to true.
-                        // it indicate that at the end of this method this dialog should dismiss.
-                        dismissDialog = true;
                         handleImportFromSimRequest(resId);
                         break;
-                        }
+                    }
                     case R.string.import_from_sdcard: {
-
-                        // After click import from sdcard,we set this value to true.
-                        // it indicate that at the end of this method this dialog should dismiss.
-                        dismissDialog = true;
                         handleImportRequest(resId);
                         break;
                     }
                     case R.string.export_to_sim: {
-                        dismissDialog = true;
                         handleExportToSimRequest(resId);
                         break;
                     }
                     case R.string.export_to_sdcard: {
-                        dismissDialog = true;
-                        Intent exportIntent = new Intent(ACTION_MULTI_PICK,
-                                Contacts.CONTENT_URI);
-                        exportIntent.putExtra(IS_CONTACT,true);
-                        exportIntent.putExtra(WANT_EXPORT,true);
-                        getActivity().startActivityForResult(exportIntent,
-                                SUBACTIVITY_EXPORT_CONTACTS);
+                    Intent exportIntent = new Intent(SimContactsConstants.ACTION_MULTI_PICK,
+                            Contacts.CONTENT_URI);
+                    exportIntent.putExtra(SimContactsConstants.IS_CONTACT, true);
+                    getActivity().startActivityForResult(exportIntent,
+                            SUBACTIVITY_EXPORT_CONTACTS);
                         break;
                     }
                     case R.string.share_visible_contacts: {
-                        dismissDialog = true;
                         doShareVisibleContacts();
                         break;
                     }
                     default: {
-                        dismissDialog = true;
                         Log.e(TAG, "Unexpected resource: "
                                 + getActivity().getResources().getResourceEntryName(resId));
                     }
                 }
-                if (dismissDialog) {
                     dialog.dismiss();
-                }
             }
         };
         return new AlertDialog.Builder(getActivity())
@@ -290,16 +252,16 @@ public class ImportExportDialogFragment extends DialogFragment
      * @param contactsAreAvailable
      */
     private void loadData(boolean contactsAreAvailable) {
-        if (null == mActiv && null == mAdapter) {
+        if (null == mActivity && null == mAdapter) {
             return;
         }
 
         mAdapter.clear();
-        final Resources res = mActiv.getResources();
+        final Resources res = mActivity.getResources();
         boolean hasIccCard = false;
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-           for (int i = 0; i < MSimTelephonyManager.getDefault().getPhoneCount(); i++) {
-               hasIccCard = MSimTelephonyManager.getDefault().hasIccCard(i);
+        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+           for (int i = 0; i < TelephonyManager.getDefault().getPhoneCount(); i++) {
+               hasIccCard = TelephonyManager.getDefault().hasIccCard(i);
                if (hasIccCard) {
                   break;
                }
@@ -335,14 +297,10 @@ public class ImportExportDialogFragment extends DialogFragment
     }
 
     private void doShareVisibleContacts() {
-        Intent intent = new Intent(ACTION_MULTI_PICK);
+        Intent intent = new Intent(SimContactsConstants.ACTION_MULTI_PICK);
         intent.setType(Contacts.CONTENT_TYPE);
-        ContactListFilter filter = new ContactListFilter(
-                ContactListFilter.FILTER_TYPE_CUSTOM, null, null, null, null);
-        intent.putExtra(AccountFilterActivity.KEY_EXTRA_CONTACT_LIST_FILTER,
-                filter);
-        intent.putExtra(IS_CONTACT,true);
-        getActivity().startActivityForResult(intent, SUBACTIVITY_SHARE_VISIBLE_CONTACTS);
+        intent.putExtra(SimContactsConstants.IS_CONTACT,true);
+        getActivity().startActivityForResult(intent, SUBACTIVITY_SHARE_VISILBLE_CONTACTS);
     }
 
     /**
@@ -354,26 +312,17 @@ public class ImportExportDialogFragment extends DialogFragment
         // There are two possibilities:
         // - one or more than one accounts -> ask the user (user can select phone-local also)
         // - no account -> use phone-local storage without asking the user
-        final AccountTypeManager accountTypes = AccountTypeManager.getInstance(mActiv);
+        final AccountTypeManager accountTypes = AccountTypeManager.getInstance(mActivity);
         final List<AccountWithDataSet> accountList = accountTypes.getAccounts(true);
         final int size = accountList.size();
         if (size > 0) {
             // Send over to the account selector
             final Bundle args = new Bundle();
             args.putInt(KEY_RES_ID, resId);
-            switch (resId) {
-                case R.string.import_from_sim:
-                case R.string.import_from_sdcard:
-                    SelectAccountDialogFragment.show(
-                        mActiv.getFragmentManager(), this,
-                        R.string.dialog_new_contact_account,
-                        AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM, args);
-                    return false;
-            }
-            SelectAccountDialogFragment.show(
-                    mActiv.getFragmentManager(), this,
-                    R.string.dialog_new_contact_account,
-                    AccountListFilter.ACCOUNTS_CONTACT_WRITABLE, args);
+            SelectAccountDialogFragment.show(mActivity.getFragmentManager(),
+                    this, R.string.dialog_new_contact_account,
+                    AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM,
+                    args);
 
             // In this case, because this DialogFragment is used as a target fragment to
             // SelectAccountDialogFragment, we can't close it yet.  We close the dialog when
@@ -381,8 +330,7 @@ public class ImportExportDialogFragment extends DialogFragment
             return false;
         }
 
-        AccountSelectionUtil.doImport(mActiv, resId,
-                (size == 1 ? accountList.get(0) : null));
+        AccountSelectionUtil.doImport(mActivity, resId, null);
         return true; // Close the dialog.
     }
 
@@ -391,7 +339,7 @@ public class ImportExportDialogFragment extends DialogFragment
      */
     @Override
     public void onAccountChosen(AccountWithDataSet account, Bundle extraArgs) {
-        AccountSelectionUtil.doImport(mActiv, extraArgs.getInt(KEY_RES_ID), account);
+        AccountSelectionUtil.doImport(mActivity, extraArgs.getInt(KEY_RES_ID), account);
 
         // At this point the dialog is still showing (which is why we can use getActivity() above)
         // So close it.
@@ -404,70 +352,20 @@ public class ImportExportDialogFragment extends DialogFragment
         dismiss();
     }
 
-    private  void displaySIMSelection() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-        builder.setTitle(R.string.select_sim);
-        mSelectedSim = SimContactsConstants.SUB_INVALID;
-        final int numPhones = MSimTelephonyManager.getDefault().getPhoneCount();
-        CharSequence[] sub_list = new CharSequence[numPhones];
-        for (int i = 1; i <= numPhones; i++) {
-            sub_list[i - 1] = "SIM" + i;
-        }
-        builder.setSingleChoiceItems(sub_list, -1,
-                new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface arg0, int arg1) {
-                        Log.d(TAG, "onClicked Dialog on arg1 = " + arg1);
-                        mSelectedSim = arg1;
-                    }
-                });
-
-        AlertDialog dialog = builder.create();
-        dialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(android.R.string.ok),
-                new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                Log.d(TAG, "onClicked OK");
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setClassName("com.android.phone",
-                    "com.android.phone.ExportContactsToSim");
-                intent.putExtra(SIM_INDEX, mSelectedSim);
-                if (mSelectedSim != SimContactsConstants.SUB_INVALID) {
-                    ((AlertDialog)dialog).getContext().startActivity(intent);
-                }
-            }
-        });
-        dialog.setButton(DialogInterface.BUTTON_NEGATIVE, getString(android.R.string.cancel),
-                new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                Log.d(TAG, "onClicked Cancel");
-            }
-        });
-
-        dialog.setOnDismissListener(new OnDismissListener () {
-            @Override
-            public void onDismiss(DialogInterface dialog) {
-                Log.d(TAG, "onDismiss");
-                Log.d(TAG, "Selected SUB = " + mSelectedSim);
-            }
-        });
-        dialog.show();
-    }
-
     private class ExportToSimSelectListener implements DialogInterface.OnClickListener {
         public void onClick(DialogInterface dialog, int which) {
             if (which >= 0) {
                 mExportSub = which;
             } else if (which == DialogInterface.BUTTON_POSITIVE) {
-                Intent pickPhoneIntent = new Intent(ACTION_MULTI_PICK, Contacts.CONTENT_URI);
+                Intent pickPhoneIntent = new Intent(
+                        SimContactsConstants.ACTION_MULTI_PICK, Contacts.CONTENT_URI);
                 // do not show the contacts in SIM card
                 pickPhoneIntent.putExtra(AccountFilterActivity.KEY_EXTRA_CONTACT_LIST_FILTER,
                         ContactListFilter
                                 .createFilterWithType(ContactListFilter.FILTER_TYPE_ALL_ACCOUNTS));
                 pickPhoneIntent.putExtra(EXT_NOT_SHOW_SIM_FLAG, true);
-                pickPhoneIntent.putExtra(IS_CONTACT,true);
-                mActiv.startActivityForResult(pickPhoneIntent, SUBACTIVITY_MULTI_PICK_CONTACT);
+                pickPhoneIntent.putExtra(SimContactsConstants.IS_CONTACT,true);
+                mActivity.startActivityForResult(pickPhoneIntent, SUBACTIVITY_MULTI_PICK_CONTACT);
             }
         }
     }
@@ -482,109 +380,11 @@ public class ImportExportDialogFragment extends DialogFragment
         }
     }
 
-    private String getAccountNameBy(int subscription) {
-        String accountName = null;
-        if (!MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            accountName = SimContactsConstants.SIM_NAME;
-        } else {
-            if (subscription == SimContactsConstants.SUB_1) {
-                accountName = SimContactsConstants.SIM_NAME_1;
-            }
-            else if (subscription == SimContactsConstants.SUB_2) {
-                accountName = SimContactsConstants.SIM_NAME_2;
-            }
-        }
-        return accountName;
-    }
-
-    private  void actuallyImportOneSimContact (
-        final ContentValues values, final ContentResolver resolver, int subscription) {
-
-        ContentValues sEmptyContentValues = new ContentValues();
-        final String name = values.getAsString(SimContactsConstants.STR_TAG);
-        final String phoneNumber = values.getAsString(SimContactsConstants.STR_NUMBER);
-        final String emailAddresses = values.getAsString(SimContactsConstants.STR_EMAILS);
-        final String anrs = values.getAsString(SimContactsConstants.STR_ANRS);
-        final String[] emailAddressArray;
-        final String[] anrArray;
-        if (!TextUtils.isEmpty(emailAddresses)) {
-            emailAddressArray = emailAddresses.split(",");
-        } else {
-            emailAddressArray = null;
-        }
-        if (!TextUtils.isEmpty(anrs)) {
-            anrArray = anrs.split(",");
-        } else {
-            anrArray = null;
-        }
-        Log.d(TAG," actuallyImportOneSimContact: name= " + name +
-            ", phoneNumber= " + phoneNumber +", emails= "+ emailAddresses
-            +", anrs= "+ anrs + ", sub " + subscription);
-
-        String accountName = getAccountNameBy(subscription);
-        String accountType = SimContactsConstants.ACCOUNT_TYPE_SIM;
-
-        final ArrayList<ContentProviderOperation> operationList =
-            new ArrayList<ContentProviderOperation>();
-        ContentProviderOperation.Builder builder =
-            ContentProviderOperation.newInsert(RawContacts.CONTENT_URI);
-        builder.withValue(RawContacts.ACCOUNT_NAME, accountName);
-        builder.withValue(RawContacts.ACCOUNT_TYPE, accountType);
-        builder.withValue(RawContacts.AGGREGATION_MODE, RawContacts.AGGREGATION_MODE_SUSPENDED);
-        operationList.add(builder.build());
-
-        builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
-        builder.withValueBackReference(StructuredName.RAW_CONTACT_ID, 0);
-        builder.withValue(Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE);
-        builder.withValue(StructuredName.DISPLAY_NAME, name);
-        operationList.add(builder.build());
-
-        builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
-        builder.withValueBackReference(Phone.RAW_CONTACT_ID, 0);
-        builder.withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE);
-        builder.withValue(Phone.TYPE, Phone.TYPE_MOBILE);
-        builder.withValue(Phone.NUMBER, phoneNumber);
-        builder.withValue(Data.IS_PRIMARY, 1);
-        operationList.add(builder.build());
-
-        if (anrArray != null) {
-            for (String anr :anrArray) {
-                builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
-                builder.withValueBackReference(Phone.RAW_CONTACT_ID, 0);
-                builder.withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE);
-                builder.withValue(Phone.TYPE, Phone.TYPE_HOME);
-                builder.withValue(Phone.NUMBER, anr);
-                operationList.add(builder.build());
-            }
-        }
-
-        if (emailAddresses != null) {
-            for (String emailAddress : emailAddressArray) {
-                builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
-                builder.withValueBackReference(Email.RAW_CONTACT_ID, 0);
-                builder.withValue(Data.MIMETYPE, Email.CONTENT_ITEM_TYPE);
-                builder.withValue(Email.TYPE, Email.TYPE_MOBILE);
-                builder.withValue(Email.ADDRESS, emailAddress);
-                operationList.add(builder.build());
-            }
-        }
-
-        try {
-            resolver.applyBatch(ContactsContract.AUTHORITY, operationList);
-        } catch (RemoteException e) {
-            Log.e(TAG,String.format("%s: %s", e.toString(), e.getMessage()));
-        } catch (OperationApplicationException e) {
-            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
-        }
-    }
-
     /**
      * A thread that export contacts to sim card
      */
     public class ExportToSimThread extends Thread {
-        public static final int TYPE_SELECT = 2;
         private int subscription;
-        private int type;
         private boolean canceled;
         private ArrayList<String[]> contactList;
         private ProgressDialog mExportProgressDlg;
@@ -592,23 +392,20 @@ public class ImportExportDialogFragment extends DialogFragment
         Activity mPeople;
         private int freeSimCount = 0;
 
-        public ExportToSimThread(int type, int subscription, ArrayList<String[]> contactList,
-            Activity mAactivity) {
+        public ExportToSimThread(int subscription, ArrayList<String[]> contactList,
+            Activity mActivity) {
             super();
-            this.type = type;
             this.subscription = subscription;
             this.contactList = contactList;
             canceled = false;
-            mPeople = mAactivity;
-            setExportProgress(contactList.size());
+            mPeople = mActivity;
+            showExportProgressDialog(mPeople);
         }
 
         @Override
         public void run() {
             isExportingToSIM = true;
-            String accountName = getAccountNameBy(subscription);
-            String accountType = SimContactsConstants.ACCOUNT_TYPE_SIM;
-            Account account = new Account(accountName,accountType);
+            Account account = MoreContactUtils.getAcount(subscription);
             boolean isAirplaneMode = false;
             boolean isSimCardFull = false;
             boolean isSimCardLoaded = true;
@@ -622,15 +419,16 @@ public class ImportExportDialogFragment extends DialogFragment
             // call query first, otherwise insert will fail if this insert is called
             // without any query before
             try{
-                if (subscription == SimContactsConstants.SUB_1) {
-                    cr = mPeople.getContentResolver().query(Uri.parse("content://iccmsim/adn"),
-                        null, null, null, null);
-                } else if (subscription == SimContactsConstants.SUB_2) {
+                long[] subId = SubscriptionManager.getSubId(subscription);
+                if (subId != null
+                        && TelephonyManager.getDefault().isMultiSimEnabled()) {
                     cr = mPeople.getContentResolver().query(
-                            Uri.parse("content://iccmsim/adn_sub2"), null, null, null, null);
+                            Uri.parse(SimContactsConstants.SIM_SUB_URI
+                                    + subId[0]), null, null, null, null);
                 } else {
-                    cr = mPeople.getContentResolver().query(Uri.parse("content://icc/adn"), null,
-                        null, null, null);
+                    cr = mPeople.getContentResolver().query(
+                            Uri.parse(SimContactsConstants.SIM_URI), null,
+                            null, null, null);
                 }
             } catch (NullPointerException e) {
                 Log.e(TAG, "Exception:" + e);
@@ -649,7 +447,6 @@ public class ImportExportDialogFragment extends DialogFragment
 
             Log.d(TAG, "freeSimCount = " + freeSimCount);
             String emails = null;
-            if (type == TYPE_SELECT) {
                 if (contactList != null) {
                     Iterator<String[]> iterator = contactList.iterator();
                     while (iterator.hasNext() && !canceled && !isAirplaneMode && isSimCardLoaded) {
@@ -811,7 +608,6 @@ public class ImportExportDialogFragment extends DialogFragment
                         }
                     }
                 }
-            }
             if (mExportProgressDlg != null) {
                 mExportProgressDlg.dismiss();
                 mExportProgressDlg = null;
@@ -829,40 +625,6 @@ public class ImportExportDialogFragment extends DialogFragment
             isExportingToSIM = false;
             Intent intent = new Intent(SimContactsConstants.INTENT_EXPORT_COMPLETE);
             mPeople.sendBroadcast(intent);
-        }
-
-        private void setExportProgress(int size){
-            mExportProgressDlg = new ProgressDialog(mPeople);
-            mExportProgressDlg.setTitle(R.string.export_to_sim);
-            mExportProgressDlg.setOnCancelListener(new OnCancelListener() {
-                public void onCancel(DialogInterface dialog) {
-                    Log.d(TAG, "Cancel exporting contacts");
-                    canceled = true;
-                }
-            });
-            mExportProgressDlg.setMessage(mPeople.getString(R.string.exporting));
-            mExportProgressDlg.setProgressNumberFormat(mPeople.getString(
-                R.string.reading_vcard_files));
-            mExportProgressDlg.setMax(size);
-            mExportProgressDlg.setProgress(0);
-
-            // set cancel dialog by touching outside disabled.
-            mExportProgressDlg.setCanceledOnTouchOutside(false);
-
-            // add a cancel button to let user cancel explicitly.
-            mExportProgressDlg.setButton(DialogInterface.BUTTON_NEGATIVE,
-                    mPeople.getString(android.R.string.cancel),
-                    new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            if (DEBUG) {
-                                Log.d(TAG, "Cancel exporting contacts by click button");
-                            }
-                            canceled = true;
-                        }
-                    });
-
-            mExportProgressDlg.show();
         }
 
         private Handler mToastHandler = new Handler() {
@@ -889,9 +651,9 @@ public class ImportExportDialogFragment extends DialogFragment
 
                      // add toast handler when export is canceled
                     case TOAST_EXPORT_CANCELED:
-                        String text = mPeople.getResources().getQuantityString(
-                                R.plurals.export_cancelled, msg.arg1, msg.arg1);
-                        Toast.makeText(mPeople, text, Toast.LENGTH_SHORT).show();
+                        int exportCount = msg.arg1;
+                        Toast.makeText(mPeople,mPeople.getString(R.string.export_cancelled,
+                            String.valueOf(exportCount)), Toast.LENGTH_SHORT).show();
                         break;
 
                     // add toast handler when no phone or email
@@ -902,7 +664,7 @@ public class ImportExportDialogFragment extends DialogFragment
                                 Toast.LENGTH_SHORT).show();
                         break;
                     case TOAST_SIM_CARD_NOT_LOAD_COMPLETE:
-                        Toast.makeText(mPeople, R.string.sim_contacts_not_loaded,
+                        Toast.makeText(mPeople, R.string.sim_contacts_not_load,
                                 Toast.LENGTH_SHORT).show();
                         break;
                 }
@@ -930,7 +692,7 @@ public class ImportExportDialogFragment extends DialogFragment
 
             // add a cancel button to let user cancel explicitly.
             mExportProgressDlg.setButton(DialogInterface.BUTTON_NEGATIVE,
-                mPeople.getString(android.R.string.cancel),
+                mPeople.getString(R.string.progressdialog_cancel),
                     new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
@@ -943,37 +705,6 @@ public class ImportExportDialogFragment extends DialogFragment
 
             mExportProgressDlg.show();
         }
-
-    }
-
-    Uri mSelectedContactUri;
-    private class DeleteClickListener implements DialogInterface.OnClickListener {
-        public void onClick(DialogInterface dialog, int which) {
-            // TODO: need to consider USIM
-            if (mSelectedContactUri != null) {
-                long id = ContentUris.parseId(mSelectedContactUri);
-                int sub = mSimContactsOperation.getSimSubscription(id);
-                if (sub != SimContactsConstants.SUB_INVALID) {
-                    ContentValues values =
-                        mSimContactsOperation.getSimAccountValues(id);
-                    if (mSimContactsOperation.delete(values, sub) == 1) {
-                        getActivity().getContentResolver().delete(mSelectedContactUri, null, null);
-                    }
-                } else {
-                    getActivity().getContentResolver().delete(mSelectedContactUri, null, null);
-                }
-            }
-        }
-    }
-
-    private int activeSubCount() {
-        int count = 0;
-        for (int i = 0; i < MSimTelephonyManager.getDefault().getPhoneCount(); i++) {
-            if (TelephonyManager.SIM_STATE_ABSENT != MSimTelephonyManager.getDefault()
-                    .getSimState(i))
-                count++;
-        }
-        return count;
     }
 
     public ImportFromSimSelectListener listener;
@@ -984,25 +715,16 @@ public class ImportExportDialogFragment extends DialogFragment
     private Dialog displayImportExportDialog(int id, Bundle bundle) {
     Dialog diag;
         switch (id) {
-            case R.string.import_from_sim:
             case R.string.import_from_sim_select: {
-                if (activeSubCount() == 2) {
                     listener = new ImportFromSimSelectListener();
                     showSimSelectDialog();
-                } else if (activeSubCount() == 1) {
-                    AccountSelectionUtil.setImportSubscription(MSimTelephonyManager
-                        .getDefault().getPreferredVoiceSubscription());
-                    handleImportRequest(R.string.import_from_sim);
-                }
-                break;
-            }
-            case R.string.import_from_sdcard: {
-                return AccountSelectionUtil.getSelectAccountDialog(getActivity(), id);
+                    break;
             }
             case R.string.export_to_sim: {
-                String[] items = new String[MSimTelephonyManager.getDefault().getPhoneCount()];
+                String[] items = new String[TelephonyManager.getDefault().getPhoneCount()];
                 for (int i = 0; i < items.length; i++) {
-                    items[i] = getString(R.string.export_to_sim) + ": " + getMultiSimName(i);
+                items[i] = getString(R.string.export_to_sim) + ": "
+                        + MoreContactUtils.getMultiSimAliasesName(mActivity, i);
                 }
                 mExportSub = SimContactsConstants.SUB_1;
                 ExportToSimSelectListener listener = new ExportToSimSelectListener();
@@ -1011,49 +733,6 @@ public class ImportExportDialogFragment extends DialogFragment
                     .setPositiveButton(android.R.string.ok, listener)
                     .setSingleChoiceItems(items, 0, listener).create();
             }
-            case R.id.dialog_sdcard_not_found: {
-                return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.no_sdcard_title)
-                    .setIcon(android.R.drawable.ic_dialog_alert)
-                    .setMessage(R.string.no_sdcard_message)
-                    .setPositiveButton(android.R.string.ok, null).create();
-            }
-            case R.id.dialog_delete_contact_confirmation: {
-                return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.deleteConfirmation_title)
-                    .setIcon(android.R.drawable.ic_dialog_alert)
-                    .setMessage(R.string.deleteConfirmation)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok,
-                        new DeleteClickListener()).create();
-            }
-            case R.id.dialog_readonly_contact_hide_confirmation: {
-                return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.deleteConfirmation_title)
-                    .setIcon(android.R.drawable.ic_dialog_alert)
-                    .setMessage(R.string.readOnlyContactWarning)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok,
-                        new DeleteClickListener()).create();
-            }
-            case R.id.dialog_readonly_contact_delete_confirmation: {
-                return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.deleteConfirmation_title)
-                    .setIcon(android.R.drawable.ic_dialog_alert)
-                    .setMessage(R.string.readOnlyContactDeleteConfirmation)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok,
-                        new DeleteClickListener()).create();
-            }
-            case R.id.dialog_multiple_contact_delete_confirmation: {
-                return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.deleteConfirmation_title)
-                    .setIcon(android.R.drawable.ic_dialog_alert)
-                    .setMessage(R.string.multipleContactDeleteConfirmation)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok,
-                        new DeleteClickListener()).create();
-            }
         }
         return null;
     }
@@ -1061,9 +740,10 @@ public class ImportExportDialogFragment extends DialogFragment
     public void showSimSelectDialog() {
         AccountSelectionUtil.setImportSubscription(SimContactsConstants.SUB_1);
         // item is for sim account to show
-        String[] items = new String[MSimTelephonyManager.getDefault().getPhoneCount()];
+        String[] items = new String[TelephonyManager.getDefault().getPhoneCount()];
         for (int i = 0; i < items.length; i++) {
-            items[i] = getString(R.string.import_from_sim) + ": " + getMultiSimName(i);
+            items[i] = getString(R.string.import_from_sim) + ": "
+                    + MoreContactUtils.getMultiSimAliasesName(mActivity, i);
         }
         new AlertDialog.Builder(getActivity())
                 .setTitle(R.string.import_from_sim)
@@ -1072,8 +752,8 @@ public class ImportExportDialogFragment extends DialogFragment
     }
 
     private void handleImportFromSimRequest(int Id) {
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            if (hasMultiEnabledIccCard()) {
+        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+            if (MoreContactUtils.getEnabledSimCount() > 1) {
                 displayImportExportDialog(R.string.import_from_sim_select
                 ,null);
             } else {
@@ -1086,60 +766,35 @@ public class ImportExportDialogFragment extends DialogFragment
     }
 
     private void handleExportToSimRequest(int Id) {
-        if (hasMultiEnabledIccCard()) {
+        if (MoreContactUtils.getEnabledSimCount() >1) {
             //has two enalbed sim cards, prompt dialog to select one
             displayImportExportDialog(Id, null).show();
         } else {
             mExportSub = getEnabledIccCard();
-            Intent pickPhoneIntent = new Intent(ACTION_MULTI_PICK, Contacts.CONTENT_URI);
+            Intent pickPhoneIntent = new Intent(
+                    SimContactsConstants.ACTION_MULTI_PICK, Contacts.CONTENT_URI);
             // do not show the contacts in SIM card
             pickPhoneIntent.putExtra(AccountFilterActivity.KEY_EXTRA_CONTACT_LIST_FILTER,
                     ContactListFilter
                             .createFilterWithType(ContactListFilter.FILTER_TYPE_ALL_ACCOUNTS));
             pickPhoneIntent.putExtra(EXT_NOT_SHOW_SIM_FLAG, true);
-            pickPhoneIntent.putExtra(IS_CONTACT,true);
-            mActiv.startActivityForResult(pickPhoneIntent, SUBACTIVITY_MULTI_PICK_CONTACT);
+            pickPhoneIntent.putExtra(SimContactsConstants.IS_CONTACT,true);
+            mActivity.startActivityForResult(pickPhoneIntent, SUBACTIVITY_MULTI_PICK_CONTACT);
         }
     }
 
     private boolean hasEnabledIccCard(int subscription) {
-        return MSimTelephonyManager.getDefault().hasIccCard(subscription) &&
-            MSimTelephonyManager.getDefault().getSimState(subscription)
-            == TelephonyManager.SIM_STATE_READY;
-    }
-
-    private boolean hasMultiEnabledIccCard() {
-        int count = 0;
-        for (int i = 0; i < MSimTelephonyManager.getDefault().getPhoneCount(); i++) {
-            if (hasEnabledIccCard(i)) {
-                count++;
-            }
-        }
-        return count > 1;
+        return TelephonyManager.getDefault().hasIccCard(subscription)
+                && TelephonyManager.getDefault().getSimState(subscription)
+                == TelephonyManager.SIM_STATE_READY;
     }
 
     private int getEnabledIccCard() {
-        for (int i = 0; i < MSimTelephonyManager.getDefault().getPhoneCount(); i++) {
+        for (int i = 0; i < TelephonyManager.getDefault().getPhoneCount(); i++) {
             if (hasEnabledIccCard(i)) {
                 return i;
             }
         }
         return SimContactsConstants.SUB_1;
-    }
-
-    /**
-     * refer to the code of hasChinese() in ContactSaveService.
-     */
-    private boolean hasChinese(String name) {
-        return name != null && name.getBytes().length > name.length();
-    }
-
-    @Override
-    public void onDismiss(DialogInterface dialog) {
-        super.onDismiss(dialog);
-    }
-
-    public static boolean isMenuItemClicked() {
-        return isMenuItemClicked;
     }
 }

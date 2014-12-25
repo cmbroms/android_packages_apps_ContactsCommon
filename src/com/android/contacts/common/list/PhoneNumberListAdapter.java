@@ -15,6 +15,7 @@
  */
 package com.android.contacts.common.list;
 
+import android.accounts.Account;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.CursorLoader;
@@ -25,11 +26,12 @@ import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Callable;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.SipAddress;
-import android.provider.ContactsContract.ContactCounts;
 import android.provider.ContactsContract.Contacts;
 import android.provider.ContactsContract.Data;
 import android.provider.ContactsContract.Directory;
 import android.provider.ContactsContract.RawContacts;
+import android.text.TextUtils;
+import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -40,9 +42,11 @@ import com.android.contacts.common.R;
 import com.android.contacts.common.ContactPhotoManager.DefaultImageRequest;
 import com.android.contacts.common.extensions.ExtendedPhoneDirectoriesManager;
 import com.android.contacts.common.extensions.ExtensionsFactory;
+import com.android.contacts.common.preference.ContactsPreferences;
 import com.android.contacts.common.util.Constants;
-import com.android.contacts.common.model.account.SimAccountType;
+import com.android.contacts.common.SimContactsConstants;
 import com.android.contacts.common.MoreContactUtils;
+import com.android.contacts.common.model.account.SimAccountType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -78,6 +82,8 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
             Phone.PHOTO_ID,                     // 6
             Phone.DISPLAY_NAME_PRIMARY,         // 7
             Phone.PHOTO_THUMBNAIL_URI,          // 8
+            RawContacts.ACCOUNT_TYPE,           // 9
+            RawContacts.ACCOUNT_NAME,           // 10
         };
 
         public static final String[] PROJECTION_ALTERNATIVE = new String[] {
@@ -90,6 +96,8 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
             Phone.PHOTO_ID,                     // 6
             Phone.DISPLAY_NAME_ALTERNATIVE,     // 7
             Phone.PHOTO_THUMBNAIL_URI,          // 8
+            RawContacts.ACCOUNT_TYPE,           // 9
+            RawContacts.ACCOUNT_NAME,           // 10
         };
 
         public static final int PHONE_ID                = 0;
@@ -101,9 +109,15 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
         public static final int PHOTO_ID                = 6;
         public static final int DISPLAY_NAME            = 7;
         public static final int PHOTO_URI               = 8;
+        public static final int PHONE_ACCOUNT_TYPE      = 9;
+        public static final int PHONE_ACCOUNT_NAME      = 10;
     }
 
+    private static final String IGNORE_NUMBER_TOO_LONG_CLAUSE =
+            "length(" + Phone.NUMBER + ") < 1000";
+
     private final CharSequence mUnknownNameText;
+    private final String mCountryIso;
 
     private ContactListItemView.PhotoPosition mPhotoPosition;
 
@@ -113,6 +127,7 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
         super(context);
         setDefaultFilterHeaderText(R.string.list_filter_phones);
         mUnknownNameText = context.getText(android.R.string.unknownName);
+        mCountryIso = GeoUtil.getCurrentCountryIso(context);
 
         final ExtendedPhoneDirectoriesManager manager
                 = ExtensionsFactory.getExtendedPhoneDirectoriesManager();
@@ -172,10 +187,21 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
                 builder = baseUri.buildUpon().appendQueryParameter(
                         ContactsContract.DIRECTORY_PARAM_KEY, String.valueOf(Directory.DEFAULT));
                 if (isSectionHeaderDisplayEnabled()) {
-                    builder.appendQueryParameter(ContactCounts.ADDRESS_BOOK_INDEX_EXTRAS, "true");
+                    builder.appendQueryParameter(Phone.EXTRA_ADDRESS_BOOK_INDEX, "true");
                 }
                 applyFilter(loader, builder, directoryId, getFilter());
             }
+
+            // Ignore invalid phone numbers that are too long. These can potentially cause freezes
+            // in the UI and there is no reason to display them.
+            final String prevSelection = loader.getSelection();
+            final String newSelection;
+            if (!TextUtils.isEmpty(prevSelection)) {
+                newSelection = prevSelection + " AND " + IGNORE_NUMBER_TOO_LONG_CLAUSE;
+            } else {
+                newSelection = IGNORE_NUMBER_TOO_LONG_CLAUSE;
+            }
+            loader.setSelection(newSelection);
 
             // Remove duplicates when it is possible.
             builder.appendQueryParameter(ContactsContract.REMOVE_DUPLICATE_ENTRIES, "true");
@@ -183,20 +209,19 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
             // Do not show contacts in disabled SIM card
             String disabledSimFilter = MoreContactUtils.getDisabledSimFilter();
             if (!TextUtils.isEmpty(disabledSimFilter)) {
-                String disabledSimName = getDisabledSimNumber(disabledSimFilter);
+                String disabledSimName = getDisabledSimName(disabledSimFilter);
                 loader.setSelection(RawContacts.ACCOUNT_NAME+ "<>" + disabledSimName);
             }
             loader.setUri(builder.build());
 
             // TODO a projection that includes the search snippet
-            if (getContactNameDisplayOrder() ==
-                    ContactsContract.Preferences.DISPLAY_ORDER_PRIMARY) {
+            if (getContactNameDisplayOrder() == ContactsPreferences.DISPLAY_ORDER_PRIMARY) {
                 loader.setProjection(PhoneQuery.PROJECTION_PRIMARY);
             } else {
                 loader.setProjection(PhoneQuery.PROJECTION_ALTERNATIVE);
             }
 
-            if (getSortOrder() == ContactsContract.Preferences.SORT_ORDER_PRIMARY) {
+            if (getSortOrder() == ContactsPreferences.SORT_ORDER_PRIMARY) {
                 loader.setSortOrder(Phone.SORT_KEY_PRIMARY);
             } else {
                 loader.setSortOrder(Phone.SORT_KEY_ALTERNATIVE);
@@ -230,12 +255,6 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
             case ContactListFilter.FILTER_TYPE_CUSTOM: {
                 selection.append(Contacts.IN_VISIBLE_GROUP + "=1");
                 selection.append(" AND " + Contacts.HAS_PHONE_NUMBER + "=1");
-                break;
-            }
-            case ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM: {
-                uriBuilder.appendQueryParameter(RawContacts.ACCOUNT_TYPE,
-                        SimAccountType.ACCOUNT_TYPE).appendQueryParameter(DefaultContactListAdapter
-                        .WITHOUT_SIM_FLAG, "true").build();
                 break;
             }
             case ContactListFilter.FILTER_TYPE_ACCOUNT: {
@@ -290,9 +309,9 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
     }
 
     @Override
-    protected View newView(Context context, int partition, Cursor cursor, int position,
-            ViewGroup parent) {
-        final ContactListItemView view = new ContactListItemView(context, null);
+    protected ContactListItemView newView(
+            Context context, int partition, Cursor cursor, int position, ViewGroup parent) {
+        ContactListItemView view = super.newView(context, partition, cursor, position, parent);
         view.setUnknownNameText(mUnknownNameText);
         view.setQuickContactEnabled(isQuickContactEnabled());
         view.setPhotoPosition(mPhotoPosition);
@@ -325,6 +344,7 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
 
     @Override
     protected void bindView(View itemView, int partition, Cursor cursor, int position) {
+        super.bindView(itemView, partition, cursor, position);
         ContactListItemView view = (ContactListItemView)itemView;
 
         setHighlight(view, cursor);
@@ -357,13 +377,16 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
         }
         cursor.moveToPosition(position);
 
+        bindViewId(view, cursor, PhoneQuery.PHONE_ID);
+
         bindSectionHeaderAndDivider(view, position);
         if (isFirstEntry) {
             bindName(view, cursor);
             if (isQuickContactEnabled()) {
                 bindQuickContact(view, partition, cursor, PhoneQuery.PHOTO_ID,
                         PhoneQuery.PHOTO_URI, PhoneQuery.CONTACT_ID,
-                        PhoneQuery.LOOKUP_KEY, PhoneQuery.DISPLAY_NAME);
+                        PhoneQuery.LOOKUP_KEY, PhoneQuery.DISPLAY_NAME,
+                        PhoneQuery.PHONE_ACCOUNT_TYPE, PhoneQuery.PHONE_ACCOUNT_NAME);
             } else {
                 if (getDisplayPhotos()) {
                     bindPhoto(view, partition, cursor);
@@ -377,7 +400,6 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
 
         final DirectoryPartition directory = (DirectoryPartition) getPartition(partition);
         bindPhoneNumber(view, cursor, directory.isDisplayNumber());
-        view.setDividerVisible(showBottomDivider);
     }
 
     protected void bindPhoneNumber(ContactListItemView view, Cursor cursor, boolean displayNumber) {
@@ -403,17 +425,15 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
                 text = GeoUtil.getGeocodedLocationFor(mContext, phoneNumber);
             }
         }
-        view.setPhoneNumber(text);
+        view.setPhoneNumber(text, mCountryIso);
     }
 
     protected void bindSectionHeaderAndDivider(final ContactListItemView view, int position) {
         if (isSectionHeaderDisplayEnabled()) {
             Placement placement = getItemPlacementInSection(position);
             view.setSectionHeader(placement.firstInSection ? placement.sectionHeader : null);
-            view.setDividerVisible(!placement.lastInSection);
         } else {
             view.setSectionHeader(null);
-            view.setDividerVisible(true);
         }
     }
 
@@ -436,9 +456,16 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
         if (!cursor.isNull(PhoneQuery.PHOTO_ID)) {
             photoId = cursor.getLong(PhoneQuery.PHOTO_ID);
         }
-
+        Account account = null;
+        if (!cursor.isNull(PhoneQuery.PHONE_ACCOUNT_TYPE)
+                && !cursor.isNull(PhoneQuery.PHONE_ACCOUNT_NAME)) {
+            final String accountType = cursor.getString(PhoneQuery.PHONE_ACCOUNT_TYPE);
+            final String accountName = cursor.getString(PhoneQuery.PHONE_ACCOUNT_NAME);
+            account = new Account(accountName, accountType);
+        }
         if (photoId != 0) {
-            getPhotoLoader().loadThumbnail(view.getPhotoView(), photoId, false, null);
+            getPhotoLoader().loadThumbnail(view.getPhotoView(), photoId, account, false,
+                    getCircularPhotos(), null);
         } else {
             final String photoUriString = cursor.getString(PhoneQuery.PHOTO_URI);
             final Uri photoUri = photoUriString == null ? null : Uri.parse(photoUriString);
@@ -447,9 +474,10 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
             if (photoUri == null) {
                 final String displayName = cursor.getString(PhoneQuery.DISPLAY_NAME);
                 final String lookupKey = cursor.getString(PhoneQuery.LOOKUP_KEY);
-                request = new DefaultImageRequest(displayName, lookupKey);
+                request = new DefaultImageRequest(displayName, lookupKey, getCircularPhotos());
             }
-            getPhotoLoader().loadDirectoryPhoto(view.getPhotoView(), photoUri, false, request);
+            getPhotoLoader().loadDirectoryPhoto(view.getPhotoView(), photoUri, account, false,
+                    getCircularPhotos(), request);
         }
     }
 
@@ -540,7 +568,7 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
                 .build();
     }
 
-    private String getDisabledSimNumber(String disabledSimFilter){
+    private String getDisabledSimName(String disabledSimFilter){
         String[] disabledSimArray = disabledSimFilter.split(",");//it will never be null
         String disabledSimName = "";
         for (int i = 0; i < disabledSimArray.length; i++) {

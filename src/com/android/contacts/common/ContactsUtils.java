@@ -19,19 +19,27 @@ package com.android.contacts.common;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
+import android.net.Uri;
 import android.provider.ContactsContract.CommonDataKinds.Im;
 import android.provider.ContactsContract.DisplayPhoto;
 import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
+import android.util.Pair;
 
 import com.android.contacts.common.model.account.AccountWithDataSet;
-import com.android.contacts.common.test.NeededForTesting;
+import com.android.contacts.common.model.dataitem.ImDataItem;
+import com.android.contacts.common.testing.NeededForTesting;
 import com.android.contacts.common.model.AccountTypeManager;
 
 import java.util.List;
 
 public class ContactsUtils {
     private static final String TAG = "ContactsUtils";
+
+    // Telecomm related schemes are in CallUtil
+    public static final String SCHEME_IMTO = "imto";
+    public static final String SCHEME_MAILTO = "mailto";
+    public static final String SCHEME_SMSTO = "smsto";
 
     private static int sThumbnailSize = -1;
 
@@ -141,4 +149,67 @@ public class ContactsUtils {
         return sThumbnailSize;
     }
 
+    private static Intent getCustomImIntent(ImDataItem im, int protocol) {
+        String host = im.getCustomProtocol();
+        final String data = im.getData();
+        if (TextUtils.isEmpty(data)) {
+            return null;
+        }
+        if (protocol != Im.PROTOCOL_CUSTOM) {
+            // Try bringing in a well-known host for specific protocols
+            host = ContactsUtils.lookupProviderNameFromId(protocol);
+        }
+        if (TextUtils.isEmpty(host)) {
+            return null;
+        }
+        final String authority = host.toLowerCase();
+        final Uri imUri = new Uri.Builder().scheme(SCHEME_IMTO).authority(
+                authority).appendPath(data).build();
+        final Intent intent = new Intent(Intent.ACTION_SENDTO, imUri);
+        return intent;
+    }
+
+    /**
+     * Returns the proper Intent for an ImDatItem. If available, a secondary intent is stored
+     * in the second Pair slot
+     */
+    public static Pair<Intent, Intent> buildImIntent(Context context, ImDataItem im) {
+        Intent intent = null;
+        Intent secondaryIntent = null;
+        final boolean isEmail = im.isCreatedFromEmail();
+
+        if (!isEmail && !im.isProtocolValid()) {
+            return new Pair<>(null, null);
+        }
+
+        final String data = im.getData();
+        if (TextUtils.isEmpty(data)) {
+            return new Pair<>(null, null);
+        }
+
+        final int protocol = isEmail ? Im.PROTOCOL_GOOGLE_TALK : im.getProtocol();
+
+        if (protocol == Im.PROTOCOL_GOOGLE_TALK) {
+            final int chatCapability = im.getChatCapability();
+            if ((chatCapability & Im.CAPABILITY_HAS_CAMERA) != 0) {
+                intent = new Intent(Intent.ACTION_SENDTO,
+                                Uri.parse("xmpp:" + data + "?message"));
+                secondaryIntent = new Intent(Intent.ACTION_SENDTO,
+                        Uri.parse("xmpp:" + data + "?call"));
+            } else if ((chatCapability & Im.CAPABILITY_HAS_VOICE) != 0) {
+                // Allow Talking and Texting
+                intent =
+                    new Intent(Intent.ACTION_SENDTO, Uri.parse("xmpp:" + data + "?message"));
+                secondaryIntent =
+                    new Intent(Intent.ACTION_SENDTO, Uri.parse("xmpp:" + data + "?call"));
+            } else {
+                intent =
+                    new Intent(Intent.ACTION_SENDTO, Uri.parse("xmpp:" + data + "?message"));
+            }
+        } else {
+            // Build an IM Intent
+            intent = getCustomImIntent(im, protocol);
+        }
+        return new Pair<>(intent, secondaryIntent);
+    }
 }

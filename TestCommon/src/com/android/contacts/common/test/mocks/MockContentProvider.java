@@ -18,12 +18,11 @@ package com.android.contacts.common.test.mocks;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
-import android.content.ContentUris;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 import android.text.TextUtils;
-import android.provider.ContactsContract.Contacts;
+
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -233,8 +232,6 @@ public class MockContentProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
-        Uri uri = ContentUris.withAppendedId(Contacts.CONTENT_URI, 1);
-        mExpectedTypeQueries.put(uri, Contacts.CONTENT_ITEM_TYPE);
         return true;
     }
 

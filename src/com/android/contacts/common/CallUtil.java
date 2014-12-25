@@ -16,34 +16,32 @@
 
 package com.android.contacts.common;
 
-import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.SystemProperties;
+import android.telecom.PhoneAccount;
+import android.telecom.PhoneAccountHandle;
+import android.telecom.TelecomManager;
+import android.telecom.VideoProfile;
 import android.telephony.PhoneNumberUtils;
 
-import com.android.internal.telephony.MSimConstants;
+import com.android.contacts.common.util.PhoneNumberHelper;
 import com.android.phone.common.PhoneConstants;
+
+import java.util.List;
 
 /**
  * Utilities related to calls.
  */
 public class CallUtil {
 
-    public static final String SCHEME_TEL = "tel";
-    public static final String SCHEME_SMSTO = "smsto";
-    public static final String SCHEME_MAILTO = "mailto";
-    public static final String SCHEME_IMTO = "imto";
-    public static final String SCHEME_SIP = "sip";
-
-    public static final ComponentName CALL_INTENT_DESTINATION = new ComponentName(
-            "com.android.phone", "com.android.phone.PrivilegedOutgoingCallBroadcaster");
-
     /**
      * Return an Intent for making a phone call. Scheme (e.g. tel, sip) will be determined
      * automatically.
      */
     public static Intent getCallIntent(String number) {
-        return getCallIntent(number, null);
+        return getCallIntent(number, null, null);
     }
 
     /**
@@ -51,43 +49,118 @@ public class CallUtil {
      * sanity check).
      */
     public static Intent getCallIntent(Uri uri) {
-        return getCallIntent(uri, null);
+        return getCallIntent(uri, null, null);
     }
 
     /**
-     * A variant of {@link #getCallIntent(String)} but also accept a call origin. For more
-     * information about call origin, see comments in Phone package (PhoneApp).
+     * A variant of {@link #getCallIntent(String)} but also accept a call origin.
+     * For more information about call origin, see comments in Phone package (PhoneApp).
      */
     public static Intent getCallIntent(String number, String callOrigin) {
-        return getCallIntent(getCallUri(number), callOrigin);
+        return getCallIntent(getCallUri(number), callOrigin, null);
     }
 
     /**
-     * A variant of {@link #getCallIntent(android.net.Uri)} but also accept a call origin. For more
-     * information about call origin, see comments in Phone package (PhoneApp).
+     * A variant of {@link #getCallIntent(String)} but also include {@code Account}.
      */
-    public static Intent getCallIntent(Uri uri, String callOrigin) {
+    public static Intent getCallIntent(String number, PhoneAccountHandle accountHandle) {
+        return getCallIntent(number, null, accountHandle);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(android.net.Uri)} but also include {@code Account}.
+     */
+    public static Intent getCallIntent(Uri uri, PhoneAccountHandle accountHandle) {
+        return getCallIntent(uri, null, accountHandle);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(String, String)} but also include {@code Account}.
+     */
+    public static Intent getCallIntent(
+            String number, String callOrigin, PhoneAccountHandle accountHandle) {
+        return getCallIntent(getCallUri(number), callOrigin, accountHandle);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(android.net.Uri)} but also accept a call
+     * origin and {@code Account}.
+     * For more information about call origin, see comments in Phone package (PhoneApp).
+     */
+    public static Intent getCallIntent(
+            Uri uri, String callOrigin, PhoneAccountHandle accountHandle) {
+        return getCallIntent(uri, callOrigin, accountHandle,
+                VideoProfile.VideoState.AUDIO_ONLY);
+    }
+
+    /**
+     * get intent to start csvt.
+     */
+    public static Intent getCSVTCallIntent(String number) {
+        Intent intent = new Intent("com.borqs.videocall.action.LaunchVideoCallScreen");
+        intent.addCategory(Intent.CATEGORY_DEFAULT);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+        intent.putExtra("IsCallOrAnswer", true);
+        intent.putExtra("LaunchMode", 1);
+        intent.putExtra("call_number_key", number);
+        return intent;
+    }
+
+    /**
+     * if true, csvt is enabled.
+     */
+    public static boolean isCSVTEnabled() {
+        boolean CSVTSupported = SystemProperties.getBoolean("persist.radio.csvt.enabled", false);
+        return CSVTSupported;
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(String, String)} for starting a video call.
+     */
+    public static Intent getVideoCallIntent(String number, String callOrigin) {
+        return getCallIntent(getCallUri(number), callOrigin, null,
+                VideoProfile.VideoState.BIDIRECTIONAL);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(String, String, android.telecom.PhoneAccountHandle)} for
+     * starting a video call.
+     */
+    public static Intent getVideoCallIntent(
+            String number, String callOrigin, PhoneAccountHandle accountHandle) {
+        return getCallIntent(getCallUri(number), callOrigin, accountHandle,
+                VideoProfile.VideoState.BIDIRECTIONAL);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(String, String, android.telecom.PhoneAccountHandle)} for
+     * starting a video call.
+     */
+    public static Intent getVideoCallIntent(String number, PhoneAccountHandle accountHandle) {
+        return getVideoCallIntent(number, null, accountHandle);
+    }
+
+    /**
+     * A variant of {@link #getCallIntent(android.net.Uri)} but also accept a call
+     * origin and {@code Account} and {@code VideoCallProfile} state.
+     * For more information about call origin, see comments in Phone package (PhoneApp).
+     */
+    public static Intent getCallIntent(
+            Uri uri, String callOrigin, PhoneAccountHandle accountHandle, int videoState) {
         final Intent intent = new Intent(Intent.ACTION_CALL_PRIVILEGED, uri);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, videoState);
         if (callOrigin != null) {
             intent.putExtra(PhoneConstants.EXTRA_CALL_ORIGIN, callOrigin);
         }
-
-        // Set phone as an explicit component of CALL_PRIVILEGED intent.
-        // Setting destination explicitly prevents other apps from capturing this Intent since,
-        // unlike SendBroadcast, there is no API for specifying a permission on startActivity.
-        intent.setComponent(CALL_INTENT_DESTINATION);
+        if (accountHandle != null) {
+            intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accountHandle);
+        }
 
         return intent;
     }
 
-    public static Intent getSlotIntent(String number, int subscription) {
-        Intent slotIntent = getCallIntent(number);
-        slotIntent.putExtra(MSimConstants.SUBSCRIPTION_KEY, subscription);
-        return slotIntent;
-    }
-
     /**
+     * Return Uri with an appropriate scheme, accepting both SIP and usual phone call
      * Checks whether two phone numbers resolve to the same phone.
      */
     public static boolean phoneNumbersEqual(String number1, String number2) {
@@ -131,9 +204,30 @@ public class CallUtil {
      * numbers.
      */
     public static Uri getCallUri(String number) {
-        if (PhoneNumberUtils.isUriNumber(number)) {
-             return Uri.fromParts(SCHEME_SIP, number, null);
+        if (PhoneNumberHelper.isUriNumber(number)) {
+             return Uri.fromParts(PhoneAccount.SCHEME_SIP, number, null);
         }
-        return Uri.fromParts(SCHEME_TEL, number, null);
+        return Uri.fromParts(PhoneAccount.SCHEME_TEL, number, null);
      }
+
+    private static boolean hasCapability(PhoneAccount phoneAccount, int capability) {
+        return (phoneAccount != null) &&
+                ((phoneAccount.getCapabilities() & capability) == capability);
+    }
+
+    public static boolean isVideoEnabled(Context context) {
+        TelecomManager telecommMgr = (TelecomManager)
+                context.getSystemService(Context.TELECOM_SERVICE);
+        if (telecommMgr == null) {
+            return false;
+        }
+        List<PhoneAccountHandle> phoneAccountHandles = telecommMgr.getCallCapablePhoneAccounts();
+        for (PhoneAccountHandle handle : phoneAccountHandles) {
+            final PhoneAccount phoneAccount = telecommMgr.getPhoneAccount(handle);
+            if (hasCapability(phoneAccount, PhoneAccount.CAPABILITY_VIDEO_CALLING)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
